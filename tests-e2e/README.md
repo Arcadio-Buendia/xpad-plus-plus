@@ -149,6 +149,17 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   body last clicked. A held key is sent the way a keyboard sends it — one
   keyDown, then `autoRepeat: true` keyDowns, then the keyUp. A lone
   keyDown/keyUp pair never reproduced the bug: only the repeats leaked.
+- `pwa.e2e.mjs` — the web build as an installed app (#60), so not the
+  desktop app: the repo is served over http under `/StickyNotesCanvas/`
+  (the GitHub Pages path) and opened in a bare Electron window with no
+  preload — what a browser tab sees. `sw.js` registers with the app's scope
+  and takes control; with the server stopped, a reload still renders a
+  seeded note, its mermaid diagram and its font, all from the cache; a
+  changed `index.html` reaches the next online load and then becomes the
+  offline copy; a changed `sw.js` takes over and deletes the old cache; and
+  the `theme-color` the installed window paints its title bar with follows
+  the theme. Chrome's install UI is out of reach from here — see the last
+  section.
 
 ## Verifying inside the flatpak (pre-release)
 
@@ -227,3 +238,27 @@ hand before releasing a change to this flow:
    restores exactly as it always did, no error;
 4. open a new backup in an older build: the notes restore, the pictures are
    simply missing (`withDefaults` drops the unknown key).
+
+## What only a human can check: installing the web app (#60)
+
+`pwa.e2e.mjs` proves the service worker and the offline cache, but the
+install itself is Chrome UI. Serve the repo at the GitHub Pages path and
+open it in Chrome (localhost counts as secure, so no https needed) — from
+the repo root:
+
+```sh
+mkdir -p /tmp/pwa-www && ln -sfn "$PWD" /tmp/pwa-www/StickyNotesCanvas
+python3 -m http.server 8060 --bind 127.0.0.1 -d /tmp/pwa-www
+# then open http://127.0.0.1:8060/StickyNotesCanvas/
+```
+
+1. DevTools → Application → Manifest shows the name, the icons (including
+   the maskable ones) and no errors or installability warnings;
+2. the install icon at the right end of the address bar installs it; the app
+   opens in its own window and lands in the launcher;
+3. Preferences → Terminal: the window's title bar turns dark with the top bar;
+4. stop the server and reopen the app: the notes, fonts and diagrams are all
+   there;
+5. on a Chromebook, the same at <https://faridjaff.github.io/StickyNotesCanvas/>
+   once it is deployed, and the launcher and shelf show the round, full-bleed
+   (maskable) icon.

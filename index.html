@@ -6,6 +6,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <link rel="icon" type="image/png" href="./assets/favicon.png">
 <link rel="apple-touch-icon" href="./assets/favicon.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#fbf7ef">
 <style>
   /* Bundled Latin subsets so the app renders correctly when sandboxed
      without network access (Flathub, Snap). Sources are vendored under
@@ -55,5 +57,15 @@
 <script type="text/babel" src="hooks.jsx"></script>
 <script type="text/babel" src="components.jsx"></script>
 <script type="text/babel" src="app.jsx"></script>
+<script>
+  // Web build only: the service worker that makes the page installable and
+  // lets it open offline (#60, sw.js). The desktop app loads this file from
+  // file:// with window.stickyAPI set, and must never register one.
+  if ('serviceWorker' in navigator && !window.stickyAPI && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').catch(err => console.warn('[sw]', err));
+    });
+  }
+</script>
 </body>
 </html>

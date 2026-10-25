@@ -146,6 +146,12 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
     document.documentElement.style.setProperty('--sticky-accent', T.accent);
   }, [T.accent]);
 
+  // The installed web app (#60) paints its title bar in the page's
+  // theme-color: keep that the colour of the top bar right under it.
+  useEffect(() => {
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', T.panelBg);
+  }, [T.panelBg]);
+
   /* ----- derived ----- */
   const isAll = currentFolder==='root';
 

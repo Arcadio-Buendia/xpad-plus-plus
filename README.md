@@ -103,9 +103,11 @@ Or grab the latest from [**Releases**](https://github.com/faridjaff/StickyNotesC
 
 The macOS builds are not code-signed. If your Mac refuses to open the downloaded app, build from source instead — instructions below.
 
-### Web (no install)
+### Web (nothing to download)
 
 Hosted version: <https://faridjaff.github.io/StickyNotesCanvas/>. Each visitor's notes live in their own browser's `localStorage` — separate from any other browser, separate from the desktop app. Survives refresh; cleared if you wipe site data.
+
+On a Chromebook, or in Chrome or Edge anywhere, it also installs as an app: click the install icon at the right end of the address bar (in Chrome, also ⋮ → **Cast, save, and share** → **Install page as app…**). It then opens in its own window from the launcher and works offline. The installed app and the browser tab share the same notes, so ticking "also clear data" in Chrome's uninstall dialog deletes them — take a backup first.
 
 ---
 

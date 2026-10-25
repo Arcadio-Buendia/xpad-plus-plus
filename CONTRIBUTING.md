@@ -30,6 +30,7 @@ Files, in the order they matter:
 | `utils.jsx` | pure functions: markdown, clipboard payloads, zoom maths, caret mapping |
 | `hooks.jsx` | persistence, undo/redo, update check |
 | `storage.js` | disk I/O for notes and images (main process only) |
+| `sw.js`, `manifest.webmanifest` | web build only: installing the GitHub Pages demo as an app, and opening it offline |
 
 ## Where user data lives
 
@@ -96,6 +97,11 @@ fails, the change is wrong — not the test.
   and traversal shapes must stay inert text.
 - **Image files are content-addressed.** The filename *is* the hash; anything
   arriving from a backup or the clipboard is re-hashed before it is written.
+- **The web build precaches every file the page loads.** A new `.jsx`,
+  vendored library, font or asset goes into `PRECACHE` in `sw.js` too, or the
+  installed web app breaks the first time it opens offline. The desktop app
+  never registers the service worker. (`tests/pwa.test.mjs`,
+  `tests-e2e/pwa.e2e.mjs`)
 
 ## The flatpak sandbox
 

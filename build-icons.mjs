@@ -26,3 +26,21 @@ fs.copyFileSync(
   path.join(__dirname, 'build', 'icon.png')
 );
 console.log('wrote build/icon.png (1024)');
+
+// Web-app icons for manifest.webmanifest (the installable web build, #60).
+// pwa/ is not in electron-builder's "files", so desktop packages skip them.
+// The maskable icons get their own artwork: full-bleed background, notes
+// inside the safe zone.
+const pwaDir = path.join(__dirname, 'pwa');
+fs.mkdirSync(pwaDir, { recursive: true });
+const maskableSvg = fs.readFileSync(path.join(__dirname, 'build', 'icon-maskable.svg'));
+for (const s of [192, 512]) {
+  for (const [src, name] of [[svg, `icon-${s}.png`], [maskableSvg, `icon-maskable-${s}.png`]]) {
+    const out = path.join(pwaDir, name);
+    await sharp(src, { density: Math.max(72, s) })
+      .resize(s, s, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toFile(out);
+    console.log(`wrote ${out}`);
+  }
+}
