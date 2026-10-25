@@ -791,6 +791,23 @@ function downloadJSON(filename, obj) {
   downloadBlob(filename, new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
 }
 
+/* ---------- Note timestamps (issue #40) ----------
+ * `created` and `updated` are ISO 8601 UTC strings, written into a
+ * downloaded note's frontmatter. created is set once, when a note is made;
+ * updated whenever its title or body changes. Notes made before these
+ * existed have neither, and nothing back-fills them — a date that would
+ * have to be made up is worse than none.
+ */
+
+// The note with `patch` applied — the one place an edit to a note lands
+// (App's updateNote). A patch that changes the title or the body stamps
+// `updated: now`; moving, resizing, pinning and recolouring are not edits.
+function applyNotePatch(note, patch, now) {
+  const next = { ...note, ...patch };
+  if (next.title !== note.title || next.body !== note.body) next.updated = now;
+  return next;
+}
+
 /* ---------- Download a note as markdown (context-menu "Download") ---------- */
 
 // Filesystem-safe .md filename for a note: the title, or (when the title is
@@ -813,13 +830,81 @@ function noteDownloadFilename(note) {
   return base + '.md';
 }
 
-// Markdown file content for a note: the body verbatim — note bodies ARE
-// markdown. The title lives in the filename only, so pasting the file's
-// contents into a new note reproduces the body exactly. Always ends in
-// exactly one newline.
+/* ---------- Note metadata as YAML frontmatter (issue #40) ----------
+ * A downloaded note opens with
+ *   ---
+ *   title: Goals Q2
+ *   created: 2026-08-11T10:30:00Z
+ *   updated: 2026-08-11T12:45:00Z
+ *   color: peach
+ *   ---
+ * and the importer reads those four keys back. A key the note has no value
+ * for is left out rather than invented: notes made before timestamps were
+ * kept have no created/updated, and an untitled note has no title (the
+ * filename carries one, as it always did).
+ */
+
+// A timestamp as ISO 8601 UTC to the second ("2026-08-11T10:30:00Z"), or
+// null when it isn't one. Only ISO-shaped dates count — Date.parse guesses
+// at anything, and a guess is not a date. No zone means UTC, as in YAML.
+const ISO_TIMESTAMP_RE = /^(\d{4}-\d{2}-\d{2})(?:[Tt ](\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?[ \t]*(Z|z|[+-]\d{2}(?::?\d{2})?)?)?$/;
+function isoTimestamp(value) {
+  const m = typeof value === 'string' && ISO_TIMESTAMP_RE.exec(value.trim());
+  if (!m) return null;
+  const [, date, hm = '00:00', ss = '00', frac = '', zone] = m;
+  // Date.parse rolls an impossible day over (Feb 30 → Mar 2); refuse it.
+  const [y, mo, d] = date.split('-').map(Number);
+  if (new Date(Date.UTC(y, mo - 1, d)).getUTCDate() !== d) return null;
+  const tz = !zone || /z/i.test(zone) ? 'Z'
+    : zone.replace(/^([+-]\d{2}):?(\d{2})?$/, (_, h, mm) => `${h}:${mm || '00'}`);
+  const t = Date.parse(`${date}T${hm}:${ss}.${frac.padEnd(3, '0').slice(0, 3)}${tz}`);
+  return isNaN(t) ? null : new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+// The YAML 1.1 words a plain scalar would read back as a boolean or a null.
+const YAML_RESERVED_WORD_RE = /^(?:y|n|yes|no|true|false|on|off|null)$/i;
+// What a double-quoted scalar escapes: its own delimiters, and every
+// character a YAML file may not hold raw (controls, DEL, C1, BOM,
+// non-characters) or that YAML 1.1 reads as a line break (NEL, LS, PS).
+const YAML_ESCAPED_CHAR_RE = /[\\"\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]/g;
+const YAML_NAMED_ESCAPES = { '\\': '\\\\', '"': '\\"', '\n': '\\n', '\r': '\\r', '\t': '\\t' };
+
+// A title as a YAML scalar. Plain — the way the issue writes it — only when
+// every YAML parser reads it back as this same string: it starts with a
+// letter (so no indicator, quote, digit or space), holds no `:` or `#`
+// (mapping and comment syntax) and nothing that needs escaping, doesn't end
+// in whitespace, and isn't a boolean or null word. Anything else is
+// double-quoted with JSON-style escapes, which YAML shares, so any title at
+// all stays one valid line.
+function yamlString(s) {
+  if (/^\p{L}[^:#\\"\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff\ufffe\uffff]*$/u.test(s)
+      && !/\s$/.test(s) && !YAML_RESERVED_WORD_RE.test(s)) return s;
+  return '"' + s.replace(YAML_ESCAPED_CHAR_RE, ch =>
+    YAML_NAMED_ESCAPES[ch] || '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0')) + '"';
+}
+
+// The frontmatter block for a note, or '' when there is nothing to put in
+// it — an empty block would read back as two --- rules.
+function noteFrontmatter(note) {
+  const n = note || {};
+  const lines = [];
+  if (typeof n.title === 'string' && n.title.trim()) lines.push('title: ' + yamlString(n.title));
+  const created = isoTimestamp(n.created);
+  const updated = isoTimestamp(n.updated);
+  if (created) lines.push('created: ' + created);
+  if (updated) lines.push('updated: ' + updated);
+  if (NOTE_COLORS.some(c => c.id === n.color)) lines.push('color: ' + n.color);
+  return lines.length ? '---\n' + lines.join('\n') + '\n---\n' : '';
+}
+
+// Markdown file content for a note: its frontmatter, then the body verbatim
+// — note bodies ARE markdown. The importer takes the frontmatter back off
+// (markdownFileToNote), so download → import returns the note it started
+// from. Always ends in exactly one newline.
 function noteToMarkdown(note) {
   const body = ((note && note.body) || '').replace(/\s+$/, '');
-  return body + '\n';
+  const front = noteFrontmatter(note);
+  return body ? front + body + '\n' : (front || '\n');
 }
 
 // Save a single note as a .md file: native save dialog under Electron (the
@@ -837,11 +922,13 @@ function downloadNoteAsMarkdown(note) {
 
 /* ---------- Import a markdown FILE as a note (desk menu "Import markdown file…") ----------
  * The exact inverse of the Download above, so the round trip is lossless:
- * the file's contents become the note BODY verbatim and its FILENAME becomes
- * the TITLE — which is the only place noteToMarkdown/noteDownloadFilename
- * put the title. Everything here is pure and unit-tested; the picker itself
- * lives in the main process (see notes:import-markdown), which is also where
- * the file is read and where the byte-level guards are enforced.
+ * the frontmatter Download wrote gives the note back its title, colour and
+ * timestamps, and the rest of the file becomes the BODY verbatim. A file
+ * with no frontmatter (or no title in it) is titled from its FILENAME —
+ * where noteDownloadFilename put the title of an untitled note. Everything
+ * here is pure and unit-tested; the picker itself lives in the main process
+ * (see notes:import-markdown), which is also where the file is read and
+ * where the byte-level guards are enforced.
  */
 
 // Filename extensions the importer strips off a title. Mirrors the picker's
@@ -876,18 +963,116 @@ function markdownFileBody(content) {
     .replace(/\s+$/, '');
 }
 
+// The frontmatter keys the importer reads back. A leading block only counts
+// as frontmatter when it names at least one of them — which is what keeps a
+// body that merely opens with a --- rule (and maybe a "Note: …" line under
+// it) from being swallowed.
+const FRONTMATTER_KEYS = ['title', 'created', 'updated', 'color'];
+
+// Split a leading YAML frontmatter block off normalised text (\n line
+// endings, no BOM): { fields, body }, or null when there isn't one.
+// Deliberately not a YAML parser, and strict about what counts: `---` alone
+// on the very first line; then only blank lines, comments, top-level
+// `key: value` lines and the indented or "- " lines nested under a key; then
+// `---` (or YAML's `...`) alone on a line. Anything else and the whole text
+// is body, exactly as it was before frontmatter existed. `fields` maps each
+// top-level key to its value as a string — or to undefined when the value is
+// null or isn't a one-line scalar (a nested list, a block scalar, a line
+// continued below): present, but unusable.
+function splitFrontmatter(text) {
+  const lines = String(text).split('\n');
+  if (!/^---[ \t]*$/.test(lines[0])) return null;
+  const fields = Object.create(null);
+  let lastKey = null;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^(?:---|\.\.\.)[ \t]*$/.test(line)) {
+      if (!FRONTMATTER_KEYS.some(k => k in fields)) return null;
+      return { fields, body: lines.slice(i + 1).join('\n') };
+    }
+    if (/^[ \t]*(?:#.*)?$/.test(line)) continue;        // blank line or comment
+    if (/^(?:[ \t]|-(?:[ \t]|$))/.test(line)) {          // nested under the key above
+      if (lastKey === null) return null;
+      fields[lastKey] = undefined;
+      continue;
+    }
+    const m = /^([A-Za-z0-9_][\w .-]*?)[ \t]*:(?:[ \t]+(.*))?$/.exec(line);
+    if (!m) return null;
+    lastKey = m[1];
+    fields[lastKey] = yamlScalarValue(m[2] || '');
+  }
+  return null;  // never closed: a --- rule, not frontmatter
+}
+
+// YAML's double-quoted escapes, past the \x \u \U hex forms.
+const YAML_UNESCAPES = {
+  '0': '\0', a: '\x07', b: '\b', t: '\t', '\t': '\t', n: '\n', v: '\v', f: '\f', r: '\r', e: '\x1b',
+  ' ': ' ', '"': '"', '/': '/', '\\': '\\', N: '\x85', _: '\xa0', L: '\u2028', P: '\u2029',
+};
+
+// One single-line YAML scalar → its string, or undefined for an empty
+// value, a null, or anything this reader doesn't take on: block scalars,
+// flow collections, anchors, aliases, tags, or a quote that never closes.
+function yamlScalarValue(raw) {
+  const s = raw.trim();
+  if (s[0] === '"') {
+    let out = '', i = 1;
+    for (; i < s.length && s[i] !== '"'; i++) {
+      if (s[i] !== '\\') { out += s[i]; continue; }
+      const c = s[++i];
+      const digits = { x: 2, u: 4, U: 8 }[c];
+      if (digits) {
+        const hex = s.slice(i + 1, i + 1 + digits);
+        const cp = hex.length === digits && /^[0-9a-fA-F]+$/.test(hex) ? parseInt(hex, 16) : -1;
+        if (cp < 0 || cp > 0x10ffff) return undefined;
+        out += String.fromCodePoint(cp);
+        i += digits;
+      } else if (Object.prototype.hasOwnProperty.call(YAML_UNESCAPES, c)) {
+        out += YAML_UNESCAPES[c];
+      } else {
+        return undefined;
+      }
+    }
+    if (i >= s.length) return undefined;  // the quote never closed
+    return /^[ \t]*(?:#.*)?$/.test(s.slice(i + 1)) ? out : undefined;
+  }
+  const single = /^'((?:[^']|'')*)'[ \t]*(?:#.*)?$/.exec(s);
+  if (single) return single[1].replace(/''/g, "'");
+  if (/^['|>[\]{}&*!%@`]/.test(s)) return undefined;
+  const plain = s.replace(/(?:^|[ \t]+)#.*$/, '').trim();
+  return plain === '' || /^(?:~|null|Null|NULL)$/.test(plain) ? undefined : plain;
+}
+
 // One picked file → { name, title, body } to make a note from, or
 // { name, error } explaining why not (the app surfaces those in the paste
-// error toast). `file` is { name, content } as read by the main process —
-// or already { name, error } when main couldn't read it, which passes
-// straight through.
+// error toast). A file that opens with frontmatter also gives back whichever
+// of color / created / updated it holds valid values for. `file` is
+// { name, content } as read by the main process — or already
+// { name, error } when main couldn't read it, which passes straight through.
 function markdownFileToNote(file) {
   const f = file || {};
   const name = (typeof f.name === 'string' && f.name.trim()) ? f.name : 'file';
   if (f.error) return { name, error: String(f.error) };
   if (typeof f.content !== 'string') return { name, error: 'nothing to read' };
   if (f.content.indexOf('\u0000') !== -1) return { name, error: 'not a text file' };
-  return { name, title: markdownFileTitle(name), body: markdownFileBody(f.content) };
+  // The BOM and line endings go first, so a file saved on Windows still
+  // opens with a `---` line the frontmatter split can see.
+  const text = f.content.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const front = splitFrontmatter(text);
+  if (!front) return { name, title: markdownFileTitle(name), body: markdownFileBody(text) };
+  const { title, color, created, updated } = front.fields;
+  const note = {
+    name,
+    title: (typeof title === 'string' && title.trim()) ? title : markdownFileTitle(name),
+    body: markdownFileBody(front.body),
+  };
+  const colorId = typeof color === 'string' ? color.trim().toLowerCase() : '';
+  if (NOTE_COLORS.some(c => c.id === colorId)) note.color = colorId;
+  const createdAt = isoTimestamp(created);
+  const updatedAt = isoTimestamp(updated);
+  if (createdAt) note.created = createdAt;
+  if (updatedAt) note.updated = updatedAt;
+  return note;
 }
 
 // Browser fallback for the import (the web demo has no main process to open
@@ -1385,4 +1570,4 @@ function downloadUrlForPlatform(version) {
 }
 const MOBILE_BANNER_DISMISSED_KEY = 'stickies.mobileBannerDismissed';
 const MOBILE_BANNER_MAX_WIDTH = 640;
-Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, renderedWordAt, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });
+Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, renderedWordAt, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });

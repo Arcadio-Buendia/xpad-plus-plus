@@ -195,7 +195,8 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
     });
   };
   const focusNote = (id) => { bringToFront(id); setSelectedIds(new Set([id])); };
-  const updateNote = (id, patch) => setNotes(ns => ns.map(n => n.id===id ? {...n, ...patch} : n));
+  // applyNotePatch stamps `updated` when the title or body changes (#40).
+  const updateNote = (id, patch) => setNotes(ns => ns.map(n => n.id===id ? applyNotePatch(n, patch, new Date().toISOString()) : n));
   const deleteNote = (id) => { takeSnapshot(); setNotes(ns => ns.filter(n => n.id!==id)); setConfirmDel(null); };
   const updateFolder = (id, patch) => setFolders(fs => ({...fs, [id]: {...fs[id], ...patch}}));
 
@@ -209,8 +210,9 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
     // Only use x/y if they're real numbers (buttons pass event objects)
     const nx = typeof x === 'number' ? x : (120 + Math.random()*240);
     const ny = typeof y === 'number' ? y : (100 + Math.random()*180);
+    const now = new Date().toISOString();
     const n = { id, folder: targetFolder, title:'New note', body:'', color,
-      x: nx, y: ny, w:260, h:180, pinned:false };
+      x: nx, y: ny, w:260, h:180, pinned:false, created: now, updated: now };
     takeSnapshot();
     setNotes(ns => [...ns, n]);
     setTimeout(()=>focusNote(id), 0);
@@ -354,16 +356,18 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
       const v = store.view || { x: 0, y: 0, z: 1 };
       const palette = NOTE_COLORS.filter(c => c.id !== 'white');
       zRef.current += 1;
+      const now = new Date().toISOString();
       const note = {
         id: uid('n'),
         folder: isAll ? (Object.keys(folders).find(k => k!=='root') || 'root') : currentFolder,
-        title: '',  // body only — mirrors the download format, so the round trip is exact
+        title: '',  // body only — plain text carries no title
         body: text.replace(/\r\n?/g, '\n'),
         color: palette[Math.floor(Math.random() * palette.length)].id,
         w: 260, h: 180,
         x: (80 + Math.random() * 100 - v.x) / v.z,
         y: (80 + Math.random() * 80  - v.y) / v.z,
         pinned: false, z: zRef.current,
+        created: now, updated: now,
       };
       takeSnapshot();
       setNotes(ns => [...ns, note]);
@@ -411,6 +415,7 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
     const newIds = [];
     // Excludes white; used when payload color is missing/invalid (e.g. LLM-pasted batches).
     const palette = NOTE_COLORS.filter(c => c.id !== 'white');
+    const now = new Date().toISOString();
     const fresh = payload.notes.map((p, idx) => {
       const id = uid('n');
       newIds.push(id);
@@ -429,6 +434,7 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
         y: baseY + STEP * idx,
         pinned: !!p.pinned,
         z: zRef.current,
+        created: now, updated: now,
       };
     });
     // Single snapshot covers both the notes push and the follow-up links push
@@ -457,8 +463,9 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
 
   /* ----- import markdown files as notes (issue #44) -----
    * The inverse of a note's context-menu "Download": one note per file, the
-   * file's contents its body and the filename its title — which is exactly
-   * where Download put the title, so the round trip is lossless.
+   * file's contents its body. The frontmatter Download wrote (#40) gives the
+   * note back its title, colour and timestamps; a file without it is titled
+   * from its filename. Either way the round trip is lossless.
    */
 
   // Everything after the picker: files whose contents have already been read
@@ -482,6 +489,7 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
         ? (Object.keys(folders).find(k => k!=='root') || 'root')
         : currentFolder;
       const palette = NOTE_COLORS.filter(c => c.id !== 'white');
+      const now = new Date().toISOString();
       const fresh = usable.map((r, idx) => {
         zRef.current += 1;
         return {
@@ -489,11 +497,15 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
           folder: targetFolder,
           title: r.title,
           body:  r.body,
-          color: palette[Math.floor(Math.random() * palette.length)].id,
+          // Colour and timestamps come from the file's frontmatter when it
+          // has them; anything it lacks is what a fresh note would get.
+          color: r.color || palette[Math.floor(Math.random() * palette.length)].id,
           w: 260, h: 180,
           x: baseX + STEP * idx,
           y: baseY + STEP * idx,
           pinned: false, z: zRef.current,
+          created: r.created || now,
+          updated: r.updated || now,
         };
       });
       // One snapshot for the whole import, however many files were picked:

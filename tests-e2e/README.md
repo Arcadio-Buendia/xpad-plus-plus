@@ -105,6 +105,17 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   menu's accelerator can do in the Electron build. Alt-summons-the-bar is
   left to manual checking: a synthetic Alt over CDP lands in the menu bar's
   own key handling about a third of the time and steals the keyboard.
+- `frontmatter.e2e.mjs` — YAML frontmatter on a downloaded note (#40): a
+  note made from the desk menu is stored with `created` and `updated`,
+  typing into it moves `updated` but never `created`, and a seeded note
+  from before timestamps gains `updated` on its first edit but no invented
+  `created`. Then the note menu's "Download": the page's
+  `downloadNoteAsMarkdown` is swapped for a recorder just before the native
+  save dialog, and the file it would have written opens with the note's
+  frontmatter (a title YAML has to quote, both timestamps, the colour) and
+  then the body, whose own leading `---` rule survives. Handing that file
+  to `onImportMarkdown` gives the note back: title, colour and timestamps
+  from the frontmatter, and a body without it.
 
 ## Verifying inside the flatpak (pre-release)
 
@@ -160,7 +171,9 @@ What to check there for the file routes into a note:
   (`notes:import-markdown` → `readMarkdownFile`) precisely because the
   portal grants it to that process; a renderer-side read would fail here the
   way image pasting used to. Worth one round trip in both directions: a
-  note's "Download", then importing the file it wrote back.
+  note's "Download", then importing the file it wrote back — the file opens
+  with YAML frontmatter (#40), and the imported note takes its title,
+  colour and timestamps from that rather than from the filename.
 
 ## What only a human can check: backup files (#38)
 
