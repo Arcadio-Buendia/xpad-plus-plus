@@ -277,6 +277,33 @@ test('##### and ###### clamp at h6', () => {
   assert.equal(mdToHtml('###### Six'), '<h6 dir="auto">Six</h6>');
 });
 
+/* ------ a line of --- or === under text is not a heading (issue #63) ------
+ * CommonMark reads "text\n---" as a setext h2 and "text\n===" as an h1. In a
+ * note that turned the line above a divider into a heading nobody typed a #
+ * for, swallowed the divider, and folded two editor lines into one preview
+ * line (#26). Headings come from # alone; --- is always a divider. */
+
+test('--- directly under a line is a divider, and the line stays text', () => {
+  assert.equal(mdToHtml('aa\n---'), '<p dir="auto">aa</p><hr dir="auto">');
+});
+
+test('the note from issue #63: every --- is a divider and nothing becomes a heading', () => {
+  assert.equal(mdToHtml('---\naa\n---\naa\n---\n\nsss'),
+    '<hr dir="auto"><p dir="auto">aa</p><hr dir="auto"><p dir="auto">aa</p><hr dir="auto">' +
+    '<p dir="auto"><br></p><p dir="auto">sss</p>');
+});
+
+test('=== or a short dash run under a line stays a plain second line', () => {
+  assert.equal(mdToHtml('Title\n==='), '<p dir="auto">Title<br>===</p>');
+  assert.equal(mdToHtml('Title\n-'), '<p dir="auto">Title<br>-</p>');
+  assert.equal(mdToHtml('Title\n--'), '<p dir="auto">Title<br>--</p>');
+});
+
+test('--- under a quoted line is a divider inside the quote', () => {
+  assert.equal(mdToHtml('> aa\n> ---'),
+    '<blockquote dir="auto"><p dir="auto">aa</p><hr dir="auto"></blockquote>');
+});
+
 /* ---------------- ordered lists ---------------- */
 
 test('a numbered list renders <ol>', () => {

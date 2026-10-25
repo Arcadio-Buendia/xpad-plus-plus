@@ -382,6 +382,8 @@ test('the projection reproduces the rendered text of real notes', () => {
     '## Build flags\n`CONFIG_PREEMPT_RT=y`\n\n- check scheduler patch\n- rerun `make menuconfig`',
     '**Yday:** fixed dnd bug\n**Today:** review PR #4412\n**Blockers:** waiting on infra',
     'a \\*escaped\\* thing\n\n---\n\nafter the rule',
+    '---\naa\n---\naa\n---\n\nsss',   // issue #63: a --- right under a line
+    'Title\n===\nbody',
     '![](sticky-image://0123456789abcdef.png)\ncaption word',
     '[evil](javascript:alert(1))\nVisit www.example.com now',
   ];

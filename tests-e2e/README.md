@@ -76,7 +76,10 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   markdown, and removed as a whole by a single Ctrl+Z. The picker itself is
   a native dialog no test can drive, so it is never clicked here — the file
   reading behind it is `readMarkdownFile` in `tests/storage.test.mjs`, and
-  the dialog needs the manual flatpak pass below.
+  the dialog needs the manual flatpak pass below. Last, the note from issue
+  #63 typed into the empty note's editor: every `---` (even right under a
+  line of text) renders as a divider, nothing becomes a heading, and each
+  rendered line starts exactly where its editor line did.
 - `mermaid.e2e.mjs` — a valid mermaid fence becomes an SVG (async, polled);
   a garbage fence fails soft (code block stays, no svg, app still alive),
   including across an edit-mode round trip.

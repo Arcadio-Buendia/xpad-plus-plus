@@ -133,6 +133,15 @@ test('.md-body headings and lists add no vertical margins of their own', () => {
   }
 });
 
+test('.md-body hr takes exactly one line, like the --- line it comes from (#63)', () => {
+  // A bare 1px rule pulled the text below every divider up by a line when
+  // the editor closed, and hugged its neighbours like an underline.
+  const m = appSrc.match(/\.md-body hr\s*\{([^}]*)\}/);
+  assert.ok(m, '.md-body hr rule exists');
+  assert.match(m[1], /margin:\s*0(?:;|\s|$)/, '.md-body hr has margin: 0');
+  assert.match(m[1], /height:\s*1lh(?:;|\s|$)/, '.md-body hr is one line tall (height: 1lh)');
+});
+
 test('the body-edit textarea resets the UA padding so text does not shift', () => {
   // The textarea style object is the only place in components.jsx that sets
   // resize:'none'; it must also zero out padding (Chromium UA default: 2px).

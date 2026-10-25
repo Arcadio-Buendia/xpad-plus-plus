@@ -182,3 +182,52 @@ test('one Ctrl+Z takes the whole import back out', async () => {
   assert.equal(left, noteCountBeforeImport,
     'a single undo removes every note the import created, and nothing else');
 });
+
+/* -------- a --- under a line is a divider, never a heading (issue #63) --------
+ * Typed line by line into the real editor, exactly as the report shows it.
+ * The preview must keep the text as text, draw every --- as a divider, and
+ * put each rendered line where the editor had it (#26 parity) — a setext
+ * heading folded "aa" and the --- under it into one line, and a bare 1px
+ * rule pulled everything below it up. */
+const DIVIDER_LINES = ['---', 'aa', '---', 'aa', '---', '', 'sss'];
+
+// A plain Enter that the textarea itself handles. app.press('Enter') sends
+// no text, so only the list-continuation handler could ever act on it; the
+// '\r' is what makes Chromium insert the newline, as a real keystroke does.
+const pressEnterKey = async () => {
+  const key = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 };
+  await app.cmd('Input.dispatchKeyEvent', { type: 'keyDown', text: '\r', ...key });
+  await app.cmd('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
+};
+
+test('--- typed under a line renders as a divider, line for line with the editor (#63)', async () => {
+  const textarea = `document.querySelector('[data-note-id="${NOTE.empty}"] textarea')`;
+  const r = await app.noteBodyRect(NOTE.empty);
+  await app.dblclick((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+  await pollUntil(() => app.evaljs(`document.activeElement === ${textarea}`),
+    { timeout: 5000, interval: 100, label: 'the empty note editor to open' });
+  for (const [i, line] of DIVIDER_LINES.entries()) {
+    if (i) await pressEnterKey();
+    if (line) await app.type(line);
+  }
+  assert.equal(await app.evaljs(`${textarea}.value`), DIVIDER_LINES.join('\n'));
+  const lineHeight = await app.evaljs(`parseFloat(getComputedStyle(${textarea}).lineHeight)`);
+
+  await app.click(20, 700);
+  await pollUntil(() => app.evaljs(`!${textarea}`),
+    { timeout: 5000, interval: 100, label: 'edit mode to close on outside click' });
+  const blocks = JSON.parse(await app.evaljs(`(() => {
+    const body = document.querySelector('[data-note-id="${NOTE.empty}"] .md-body');
+    const top = body.getBoundingClientRect().top;
+    return JSON.stringify([...body.children].map(c => ({
+      tag: c.tagName, text: c.textContent, top: c.getBoundingClientRect().top - top,
+    })));
+  })()`));
+  assert.deepEqual(blocks.map(b => [b.tag, b.text]),
+    [['HR', ''], ['P', 'aa'], ['HR', ''], ['P', 'aa'], ['HR', ''], ['P', ''], ['P', 'sss']],
+    'every --- is a divider and no line became a heading');
+  for (const [i, b] of blocks.entries()) {
+    assert.ok(Math.abs(b.top - i * lineHeight) < 1,
+      `rendered line ${i + 1} (${b.tag}) starts ${b.top}px down; editor line ${i + 1} starts ${i * lineHeight}px down`);
+  }
+});

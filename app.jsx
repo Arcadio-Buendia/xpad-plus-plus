@@ -858,7 +858,11 @@ globalStyle.textContent = `
   .md-body table { border-collapse: collapse; margin: 0; font-size: .95em; }
   .md-body th, .md-body td { border: 1px solid rgba(0,0,0,.2); padding: 2px 6px; }
   .md-body img { max-width: 100%; }
-  .md-body hr { border: none; border-top: 1px solid rgba(0,0,0,.2); margin: 0; }
+  /* A --- divider is a whole line in the editor, so it is a whole line here
+     too, with the rule drawn through its middle (#63). height: 1px first is
+     the fallback for a browser without the lh unit (web demo): today's bare
+     rule, still visible. */
+  .md-body hr { border: none; margin: 0; height: 1px; height: 1lh; background: linear-gradient(rgba(0,0,0,.2), rgba(0,0,0,.2)) no-repeat center / 100% 1px; }
   .md-body .mermaid-diagram { margin: 0; }
   .md-body .mermaid-diagram svg { max-width: 100%; height: auto; }
   .md-body code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .88em; background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 3px; }

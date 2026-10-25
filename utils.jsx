@@ -106,7 +106,8 @@ const SEED = {
  *     javascript:, data:, file: etc. can never become clickable/fetchable.
  *   - every block-level tag carries dir="auto" so RTL lines lay out right.
  *   - headings shift down two levels (# → h3, ## → h4, ### → h5, #### and
- *     deeper → h6) so they stay note-sized.
+ *     deeper → h6) so they stay note-sized, and only a # line makes one:
+ *     "text\n---" is the text then a divider, never a setext heading.
  *   - ```mermaid fences emit <pre class="mermaid-src"> which NoteCard swaps
  *     for the rendered diagram after mount (fails soft back to the code
  *     block); other fences render <pre><code class="language-x">.
@@ -173,13 +174,16 @@ let _md = null;
 function getMarkdownIt() {
   if (_md) return _md;
   const md = markdownit({ html: false, linkify: true, breaks: true });
-  // Two CommonMark rules are deliberately off, per the old-vs-new compat
+  // Three CommonMark rules are deliberately off, per the old-vs-new compat
   // corpus (tests/compat.test.mjs): 'reference' made "[1]: url" definition
   // lines vanish from notes written before the markdown-it swap, and
   // 'code' turned any casually 4-space/tab-indented line into a code
   // block. Fenced ``` blocks and inline [text](url) links cover both
-  // needs without the surprises.
-  md.disable(['reference', 'code']);
+  // needs without the surprises. 'lheading' (setext headings) turned the
+  // line above a "---" divider — or above "===" — into a heading nobody
+  // typed a # for, and folded those two editor lines into one preview
+  // line (issue #63); with it off, --- under a line is always a divider.
+  md.disable(['reference', 'code', 'lheading']);
   // http(s) for the web, plus the app's own pasted-image references. Note
   // validateLink is shared by links and images, so [text](sticky-image://…)
   // also parses as an anchor — inert by design: openWebLink and the main
