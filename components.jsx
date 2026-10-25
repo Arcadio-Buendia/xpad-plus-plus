@@ -2375,6 +2375,14 @@ function ContextMenu({T, x, y, items, onClose, fixed}) {
 /* CONFIRM                                                               */
 /* ==================================================================== */
 function ConfirmDialog({T, title, body, onCancel, onConfirm, confirmLabel='Delete'}) {
+  // Escape cancels. Deliberately no key confirms: Delete/Backspace open this
+  // dialog (#47), often under someone who thinks they're typing in a note,
+  // and their next keystroke must not be the one that answers it.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
   return (
     <div style={{position:'fixed', inset:0, background:'rgba(10,14,20,.35)', zIndex:100000, display:'grid', placeItems:'center'}}>
       <div style={{background:T.panelBg, color:T.panelText, borderRadius:12, border:`1px solid ${T.panelBorder}`, width:400, padding:22, boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>

@@ -202,6 +202,17 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
   // applyNotePatch stamps `updated` when the title or body changes (#40).
   const updateNote = (id, patch) => setNotes(ns => ns.map(n => n.id===id ? applyNotePatch(n, patch, new Date().toISOString()) : n));
   const deleteNote = (id) => { takeSnapshot(); setNotes(ns => ns.filter(n => n.id!==id)); setConfirmDel(null); };
+  // Delete/Backspace on the selection. Batch multi-delete: one snapshot
+  // covers the notes + link cleanup so a single Ctrl+Z reverts the whole
+  // delete, not just the links.
+  const deleteNotes = (ids) => {
+    const doomed = new Set(ids);
+    takeSnapshot();
+    setNotes(ns => ns.filter(n => !doomed.has(n.id)));
+    setLinks(ls => ls.filter(l => !doomed.has(l.from) && !doomed.has(l.to)));
+    setSelectedIds(new Set());
+    setConfirmDel(null);
+  };
   const updateFolder = (id, patch) => setFolders(fs => ({...fs, [id]: {...fs[id], ...patch}}));
 
   const createNote = (x, y) => {
@@ -629,6 +640,10 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
   /* ----- keyboard ----- */
   useEffect(() => {
     const h = (e) => {
+      // An open confirmation owns the keyboard. Whoever it opened under may
+      // still think they're typing (#47): another Backspace, a letter, an
+      // Escape must not act on the canvas behind it.
+      if (confirmDel) return;
       if (e.target.matches('input, textarea, [contenteditable], [contenteditable="true"]')) return;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase()==='c') {
@@ -670,15 +685,22 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
       if (e.key.toLowerCase()==='n') { e.preventDefault(); createNote(); }
       if (e.key.toLowerCase()==='f' && (e.metaKey||e.ctrlKey)) { e.preventDefault(); document.getElementById('qs')?.focus(); }
       if (e.key==='Escape') { setSelectedIds(new Set()); }
-      if ((e.key==='Delete' || e.key==='Backspace') && selectedIds.size > 0) {
+      if (e.key==='Delete' || e.key==='Backspace') {
+        // Same guard as Ctrl+C / Ctrl+X: text highlighted in a note means
+        // the user is working with that text — Delete reads as "erase it",
+        // Shift+Delete as "cut it" — never as "delete the whole note".
+        if (hasTextSelection(window.getSelection())) return;
+        // Only notes that are on the canvas right now. The selection
+        // survives switching folders and searching, so without this a key
+        // pressed in one folder deleted notes left selected in another.
+        const visible = new Set(filteredNotes.map(n => n.id));
+        const ids = [...selectedIds].filter(id => visible.has(id));
+        if (!ids.length) return;
         e.preventDefault();
-        const ids = selectedIds;
-        // Batch multi-delete: one snapshot covers the notes + link cleanup so
-        // a single Ctrl+Z reverts the whole delete, not just the links.
-        takeSnapshot();
-        setNotes(ns => ns.filter(n => !ids.has(n.id)));
-        setLinks(ls => ls.filter(l => !ids.has(l.from) && !ids.has(l.to)));
-        setSelectedIds(new Set());
+        // Shift+Delete / Shift+Backspace delete at once; the bare key asks
+        // first, with the same dialog as the note's × button (#47).
+        if (e.shiftKey && !mod && !e.altKey) deleteNotes(ids);
+        else setConfirmDel({kind:'notes', ids});
       }
     };
     window.addEventListener('keydown', h);
@@ -688,6 +710,11 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
   // Breadcrumb path for nested folders: "Work / Sprints" instead of just
   // "Sprints", shown in the top chrome and the status bar.
   const currentFolderName = isAll ? 'All notes' : (folderPath(folders, currentFolder).join(' / ') || '');
+
+  // The delete confirmation counts several notes (Delete/Backspace on a
+  // multi-selection); a single one reads exactly as its × button's does.
+  const confirmMany = confirmDel?.kind==='notes' && confirmDel.ids.length > 1;
+  const confirmNoteId = confirmDel?.kind==='notes' ? confirmDel.ids[0] : confirmDel?.id;
 
   return (
     <div style={{height:'100%', background:T.wallpaper, color:T.panelText, position:'relative',
@@ -750,15 +777,20 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
         <ConfirmDialog T={T}
           title={confirmDel.kind==='folder'
             ? `Delete "${folders[confirmDel.id]?.name}"?`
-            : `Delete "${notes.find(n=>n.id===confirmDel.id)?.title || 'note'}"?`}
+            : confirmMany
+              ? `Delete ${confirmDel.ids.length} notes?`
+              : `Delete "${notes.find(n=>n.id===confirmNoteId)?.title || 'note'}"?`}
           body={confirmDel.kind==='folder'
             ? (folderSubtreeIds(folders, confirmDel.id).size > 1
                 ? 'All subfolders and notes inside this folder will also be deleted.'
                 : 'All notes inside this folder will also be deleted.')
-            : 'This note will be permanently removed.'}
+            : confirmMany
+              ? 'These notes will be permanently removed.'
+              : 'This note will be permanently removed.'}
           onCancel={()=>setConfirmDel(null)}
           onConfirm={()=>{
             if (confirmDel.kind==='note') deleteNote(confirmDel.id);
+            else if (confirmDel.kind==='notes') deleteNotes(confirmDel.ids);
             else deleteFolder(confirmDel.id);
             setConfirmDel(null);
           }}
