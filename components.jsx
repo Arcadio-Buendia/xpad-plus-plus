@@ -2421,7 +2421,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
   // Row currently hovered by a folder drag, with the drop zone the pointer
   // is in. Shape: {id, zone: 'before'|'after'|'into'} | null.
   const [dragOver, setDragOver] = useState(null);
-  // Right-click context menu on a folder row.
+  // Right-click context menu on a folder row, at viewport coordinates.
   // Shape: {x, y, folderId, mode?: 'move'} | null.
   const [folderMenu, setFolderMenu] = useState(null);
   // Collapsed subtrees (drawer-local UI state, not persisted). A collapsed
@@ -2551,14 +2551,13 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
     ) : (anyNesting ? <span style={{width:16, flex:'none'}}/> : null));
 
     // Context-menu handler shared across variants (skips the All-notes root row).
+    // The menus render in screen space (`fixed`, like a note's): inside the
+    // drawer, its overflow:hidden cut off every item below a low row.
     const onRowContextMenu = (e) => {
       if (isAll) return;
       e.preventDefault();
       e.stopPropagation();
-      let host = e.currentTarget.parentElement;
-      while (host && getComputedStyle(host).position === 'static') host = host.parentElement;
-      const rect = host ? host.getBoundingClientRect() : {left:0, top:0};
-      setFolderMenu({x: e.clientX - rect.left, y: e.clientY - rect.top, folderId: f.id});
+      setFolderMenu({x: e.clientX, y: e.clientY, folderId: f.id});
     };
 
     // ─── Paper variant: washi-tape row, no chip icon (real folders only) ───
@@ -2878,14 +2877,14 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
           </div>
 
           {folderMenu && folderMenu.mode !== 'move' && (
-            <ContextMenu T={T} x={folderMenu.x} y={folderMenu.y}
+            <ContextMenu T={T} x={folderMenu.x} y={folderMenu.y} fixed
               onClose={()=>setFolderMenu(null)}
               items={[
                 {label:'Rename', onClick:()=>setRenamingFolder(folderMenu.folderId)},
                 {label:'New subfolder', onClick:()=>{ expandFolder(folderMenu.folderId); onCreateFolder(folderMenu.folderId); }},
                 // Swaps this menu for a second flat "pick the destination"
-                // menu — a hover submenu would clip against the drawer's
-                // overflow:hidden since the drawer hugs the window edge.
+                // menu — a hover submenu opens to the right, and the drawer
+                // hugs the window's right edge.
                 {label:'Move to…', keepOpen:true, onClick:()=>setFolderMenu(m => m && ({...m, mode:'move'}))},
                 {divider:true},
                 {label:'Delete folder', destructive:true, onClick:()=>onDeleteFolder(folderMenu.folderId)},
@@ -2893,7 +2892,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
             />
           )}
           {folderMenu && folderMenu.mode === 'move' && (
-            <ContextMenu T={T} x={folderMenu.x} y={folderMenu.y}
+            <ContextMenu T={T} x={folderMenu.x} y={folderMenu.y} fixed
               onClose={()=>setFolderMenu(null)}
               items={(() => {
                 const fid = folderMenu.folderId;
