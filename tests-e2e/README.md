@@ -116,6 +116,16 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   then the body, whose own leading `---` rule survives. Handing that file
   to `onImportMarkdown` gives the note back: title, colour and timestamps
   from the frontmatter, and a body without it.
+- `theme.e2e.mjs` — Style × Appearance (#43) through the real Preferences
+  panel: a Paper store saved before appearances existed opens as Paper +
+  Light even with the OS in dark mode; Appearance → Dark repaints the chrome
+  (the notes keep their pastel paper) and is saved to `notes.json`; switching
+  Style keeps the chosen Appearance; and System follows
+  `prefers-color-scheme` live — flipped with `Emulation.setEmulatedMedia`,
+  no click in between. A Terminal store from before #43 opens Terminal +
+  Dark. On a real desktop that media feature is driven by the settings
+  portal (`org.freedesktop.appearance color-scheme`), which needs a human
+  flipping the desktop's dark-style switch to see end to end.
 
 ## Verifying inside the flatpak (pre-release)
 

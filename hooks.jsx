@@ -201,6 +201,26 @@ function useStickyStore(onImportRequest) {
 
   return { store, setKey, exportNow, importNow, takeSnapshot, undo, redo };
 }
+// Live answer to "is the OS in dark mode?" for the System appearance (#43).
+// prefers-color-scheme is the one signal that works in both builds: in
+// Electron it mirrors nativeTheme, which on Linux tracks the desktop's
+// light/dark switch through the settings portal (org.freedesktop.appearance
+// color-scheme — what GNOME's dark-style toggle sets); in the web demo it is
+// the browser's own setting. The change event makes a switch made while the
+// app is open land immediately.
+function useSystemDark() {
+  const query = '(prefers-color-scheme: dark)';
+  const [dark, setDark] = useState(() => !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const onChange = () => setDark(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return dark;
+}
 function useTweakMode(setState) {
   const [active, setActive] = useState(false);
   useEffect(() => {
@@ -328,4 +348,4 @@ function useUpdateCheck() {
   return { available, dismiss, info, closeInfo };
 }
 
-Object.assign(window, { usePersistedState, useStickyStore, useTweakMode, useUpdateCheck });
+Object.assign(window, { usePersistedState, useStickyStore, useSystemDark, useTweakMode, useUpdateCheck });

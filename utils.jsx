@@ -3,6 +3,7 @@ const { useState, useEffect, useRef, useMemo, useCallback, Fragment } = React;
 /* ---------- TWEAKABLE DEFAULTS ---------- */
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "paper",
+  "appearance": "system",
   "font": "Inter",
   "density": "cozy",
   "showLinks": true,
@@ -1225,7 +1226,7 @@ function withDefaults(raw) {
     && !window.stickyAPI
     && window.innerWidth <= MOBILE_BANNER_MAX_WIDTH) ? false : true;
   return {
-    tweaks:  src.tweaks  ?? TWEAK_DEFAULTS,
+    tweaks:  migrateTweaks(src.tweaks ?? TWEAK_DEFAULTS),
     // Sanitize on every load so pre-subfolder stores (and imported backups
     // with broken parent links) always hydrate into a valid folder tree.
     folders: sanitizeFolderParents(src.folders ?? SEED.folders),
@@ -1237,21 +1238,63 @@ function withDefaults(raw) {
     folderOrder: Array.isArray(src.folderOrder) ? src.folderOrder : [],
   };
 }
-/* ---------- THEME TOKENS ---------- */
-function themeTokens(theme) {
-  if (theme === 'terminal') {
-    return {
-      wallpaper: 'radial-gradient(1200px 800px at 20% 10%, #1b2028 0%, #0e1116 60%, #0a0c10 100%)',
-      panelBg: '#141a22', panelBorder: '#2a3340', panelText: '#cfe0d4',
-      accent: '#8fd27a', muted: '#7b8a9a', hairline: '#1d2530',
-      noteShadow: '0 0 0 1px #2a3340, 0 8px 22px rgba(0,0,0,.5)',
-      noteRadius: '4px',
-      bodyFont: '"JetBrains Mono", "IBM Plex Mono", monospace',
-      folderBg: '#1a2230', folderBorder: '#2f3b4c',
-    };
-  }
-  if (theme === 'flat') {
-    return {
+/* ---------- THEME TOKENS ----------
+ * A theme is a Style (tweaks.theme: paper / flat / terminal — the key keeps
+ * its old name so older builds and backups still read it) crossed with an
+ * Appearance (tweaks.appearance: light / dark / system). Each style has one
+ * palette per appearance; the one it had before appearances existed (issue
+ * #43) — Paper and Flat light, Terminal dark — is its "native" appearance and
+ * is unchanged value for value, so an upgrade keeps the look it had.
+ *
+ * Only the chrome changes with the appearance: desk, toolbar, drawer, menus,
+ * Preferences, confirm dialogs. Note paper stays pastel and note ink stays
+ * dark in all six.
+ *
+ * Tokens beyond the original set, so components stop hard-coding colours
+ * that only worked on one side:
+ *   inputBg      search field, the terminal glyph tile
+ *   rowBg        resting drawer row
+ *   drawerFootBg the drawer's "new sticky" footer strip
+ *   accentInk    text/glyphs sitting ON the accent (buttons, badges)
+ *   danger       destructive menu items and the delete-folder hover
+ * Paper alone also has the stationery drawer: drawerBg, drawerInk (its
+ * heading), paperEdge (ink of its hairlines, used at several alphas) and
+ * drawerShadow.
+ */
+const NATIVE_APPEARANCE = { paper: 'light', flat: 'light', terminal: 'dark' };
+const THEME_PALETTES = {
+  paper: {
+    light: {
+      wallpaper: "linear-gradient(180deg,#efe8dc 0%, #e5dbc8 100%)",
+      panelBg: '#fbf7ef', panelBorder: '#d8cfbc', panelText: '#2a241a',
+      accent: '#b8621b', muted: '#7a6f5b', hairline: '#e6dfce',
+      noteShadow: '0 2px 0 rgba(60,40,20,.05), 0 10px 28px rgba(60,40,20,.14), inset 0 0 0 1px rgba(0,0,0,.04)',
+      noteRadius: '2px',
+      bodyFont: 'Caveat, "Segoe Script", cursive',
+      folderBg: '#f3ead7', folderBorder: '#d8cfbc',
+      inputBg: 'rgba(0,0,0,.03)', rowBg: 'rgba(0,0,0,.02)', drawerFootBg: 'transparent',
+      accentInk: '#fff', danger: '#c33',
+      drawerBg: '#f6ecd8', drawerInk: '#6a5a44', paperEdge: '#785028',
+      drawerShadow: 'inset 0 0 0 1px rgba(120,80,40,.12), 0 2px 0 rgba(60,40,20,.05), 0 10px 28px rgba(60,40,20,.16)',
+    },
+    // Kraft board under a desk lamp: warm browns, cream ink, the orange
+    // accent lifted so it still reads on the dark panel.
+    dark: {
+      wallpaper: "linear-gradient(180deg,#2b251d 0%, #221d16 100%)",
+      panelBg: '#312a21', panelBorder: '#4f4536', panelText: '#f1e8d6',
+      accent: '#e39a55', muted: '#bcae93', hairline: '#3e352a',
+      noteShadow: '0 2px 0 rgba(0,0,0,.25), 0 10px 28px rgba(0,0,0,.5), inset 0 0 0 1px rgba(0,0,0,.04)',
+      noteRadius: '2px',
+      bodyFont: 'Caveat, "Segoe Script", cursive',
+      folderBg: '#3a3227', folderBorder: '#4f4536',
+      inputBg: 'rgba(0,0,0,.2)', rowBg: 'rgba(0,0,0,.14)', drawerFootBg: 'transparent',
+      accentInk: '#2a1606', danger: '#ff8a7a',
+      drawerBg: '#2c251c', drawerInk: '#d9c7a6', paperEdge: '#e8c48f',
+      drawerShadow: 'inset 0 0 0 1px rgba(232,196,143,.10), 0 2px 0 rgba(0,0,0,.2), 0 10px 28px rgba(0,0,0,.45)',
+    },
+  },
+  flat: {
+    light: {
       wallpaper: 'linear-gradient(135deg,#e9edf2 0%, #dde3eb 100%)',
       panelBg: '#ffffff', panelBorder: '#d6dce4', panelText: '#1f2430',
       accent: '#3584e4', muted: '#6a7383', hairline: '#eaeef3',
@@ -1259,17 +1302,73 @@ function themeTokens(theme) {
       noteRadius: '10px',
       bodyFont: 'Inter, system-ui, sans-serif',
       folderBg: '#f3f5f9', folderBorder: '#d6dce4',
-    };
-  }
-  return {
-    wallpaper: "linear-gradient(180deg,#efe8dc 0%, #e5dbc8 100%)",
-    panelBg: '#fbf7ef', panelBorder: '#d8cfbc', panelText: '#2a241a',
-    accent: '#b8621b', muted: '#7a6f5b', hairline: '#e6dfce',
-    noteShadow: '0 2px 0 rgba(60,40,20,.05), 0 10px 28px rgba(60,40,20,.14), inset 0 0 0 1px rgba(0,0,0,.04)',
-    noteRadius: '2px',
-    bodyFont: 'Caveat, "Segoe Script", cursive',
-    folderBg: '#f3ead7', folderBorder: '#d8cfbc',
-  };
+      inputBg: 'rgba(0,0,0,.03)', rowBg: 'rgba(0,0,0,.02)', drawerFootBg: 'rgba(0,0,0,.02)',
+      accentInk: '#fff', danger: '#c33',
+    },
+    // Cool slate greys with the dark-mode GNOME blue as the accent.
+    dark: {
+      wallpaper: 'linear-gradient(135deg,#1e2128 0%, #17191e 100%)',
+      panelBg: '#252930', panelBorder: '#3a404b', panelText: '#e8ebf0',
+      accent: '#78aeed', muted: '#9ea7b6', hairline: '#2f343d',
+      noteShadow: '0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35)',
+      noteRadius: '10px',
+      bodyFont: 'Inter, system-ui, sans-serif',
+      folderBg: '#2c3038', folderBorder: '#3a404b',
+      inputBg: 'rgba(0,0,0,.2)', rowBg: 'rgba(255,255,255,.03)', drawerFootBg: 'rgba(0,0,0,.15)',
+      accentInk: '#0b1a2c', danger: '#ff7b72',
+    },
+  },
+  terminal: {
+    // A light terminal profile: near-white with a green cast, dark green ink
+    // and accent, the same square, monospaced character.
+    light: {
+      wallpaper: 'radial-gradient(1200px 800px at 20% 10%, #f3f6f2 0%, #e7ece8 60%, #dfe5e1 100%)',
+      panelBg: '#f8faf7', panelBorder: '#c6d1c9', panelText: '#18261c',
+      accent: '#2b7a30', muted: '#55645a', hairline: '#e1e7e2',
+      noteShadow: '0 0 0 1px #c6d1c9, 0 6px 18px rgba(20,40,30,.12)',
+      noteRadius: '4px',
+      bodyFont: '"JetBrains Mono", "IBM Plex Mono", monospace',
+      folderBg: '#edf2ee', folderBorder: '#c6d1c9',
+      inputBg: '#eef2ef', rowBg: '#eef2ef', drawerFootBg: '#e8ede9',
+      accentInk: '#fff', danger: '#c33',
+    },
+    dark: {
+      wallpaper: 'radial-gradient(1200px 800px at 20% 10%, #1b2028 0%, #0e1116 60%, #0a0c10 100%)',
+      panelBg: '#141a22', panelBorder: '#2a3340', panelText: '#cfe0d4',
+      accent: '#8fd27a', muted: '#7b8a9a', hairline: '#1d2530',
+      noteShadow: '0 0 0 1px #2a3340, 0 8px 22px rgba(0,0,0,.5)',
+      noteRadius: '4px',
+      bodyFont: '"JetBrains Mono", "IBM Plex Mono", monospace',
+      folderBg: '#1a2230', folderBorder: '#2f3b4c',
+      inputBg: '#0e1319', rowBg: '#0e1319', drawerFootBg: '#0a0c10',
+      accentInk: '#0a0c10', danger: '#c33',
+    },
+  },
+};
+// `appearance` is the resolved 'light' | 'dark' (see resolveAppearance);
+// anything else — including nothing — gets the style's native palette.
+// An unknown style renders as Paper, as it always has.
+function themeTokens(theme, appearance) {
+  const style = THEME_PALETTES[theme] ? theme : 'paper';
+  const look = (appearance === 'light' || appearance === 'dark') ? appearance : NATIVE_APPEARANCE[style];
+  return THEME_PALETTES[style][look];
+}
+// The appearance actually painted. System follows the OS (`systemDark` is
+// the live prefers-color-scheme answer — see useSystemDark); a missing or
+// unknown value yields null, which themeTokens reads as "the style decides".
+function resolveAppearance(appearance, systemDark) {
+  if (appearance === 'light' || appearance === 'dark') return appearance;
+  if (appearance === 'system') return systemDark ? 'dark' : 'light';
+  return null;
+}
+// Tweaks saved before #43 have a style and no appearance. Pin them to the
+// appearance their style always had (terminal → dark, paper/flat → light),
+// so the look survives the upgrade and from then on the two axes move
+// independently. Runs inside withDefaults, i.e. on load and on restore.
+function migrateTweaks(tweaks) {
+  const t = tweaks || {};
+  if (['light', 'dark', 'system'].includes(t.appearance)) return tweaks;
+  return { ...t, appearance: NATIVE_APPEARANCE[THEME_PALETTES[t.theme] ? t.theme : 'paper'] };
 }
 
 function uid(pre='id') { return pre + '_' + Math.random().toString(36).slice(2,8); }
@@ -1582,4 +1681,4 @@ function downloadUrlForPlatform(version) {
 }
 const MOBILE_BANNER_DISMISSED_KEY = 'stickies.mobileBannerDismissed';
 const MOBILE_BANNER_MAX_WIDTH = 640;
-Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });
+Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });

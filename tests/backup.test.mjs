@@ -51,10 +51,12 @@ function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sticky-backup-'));
 }
 
-// A store shaped exactly like notes.json / a backup file.
+// A store shaped exactly like notes.json / a backup file. Tweaks carry an
+// appearance, as every store written since #43 does — one without it is
+// migrated on load, which tests/theme.test.mjs covers.
 function storeWith(...bodies) {
   return {
-    tweaks: { theme: 'paper' },
+    tweaks: { theme: 'paper', appearance: 'light' },
     folders: { root: { id: 'root', name: 'All notes', parent: null, hue: '#888' } },
     notes: bodies.map((body, i) => ({
       id: `n${i}`, folder: 'root', title: `Note ${i}`, body,

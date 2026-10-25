@@ -11,6 +11,8 @@ function App() {
   const requestRestore = useCallback(() => setConfirmRestore(true), []);
   const { store, setKey, exportNow, importNow, takeSnapshot, undo, redo } = useStickyStore(requestRestore);
   const update = useUpdateCheck();
+  // Read here, above the loading gate, so the hook order never changes.
+  const systemDark = useSystemDark();
   // File → "Import notes from image using your AI…". Simple modal that surfaces a
   // copyable prompt template the user hands to an LLM along with an image;
   // the LLM's reply is pasted here (Ctrl+V) and hits the existing paste
@@ -41,13 +43,13 @@ function App() {
         {update.available && <UpdateBanner info={update.available} onDismiss={update.dismiss}/>}
         <AppInner store={store} setKey={setKey} exportNow={exportNow} importNow={requestRestore}
           takeSnapshot={takeSnapshot} undo={undo} redo={redo}
-          onImportFromImage={openImportHelp} />
+          onImportFromImage={openImportHelp} systemDark={systemDark} />
       </div>
       <InfoDialog info={update.info} onClose={update.closeInfo} />
       <InfoDialog info={whatsNew} onClose={() => setWhatsNew(null)} />
       <ImportFromImageDialog open={importHelpOpen} onClose={() => setImportHelpOpen(false)} />
       {confirmRestore && (
-        <ConfirmDialog T={themeTokens(store.tweaks?.theme)}
+        <ConfirmDialog T={themeTokens(store.tweaks?.theme, resolveAppearance(store.tweaks?.appearance, systemDark))}
           title="Restore backup?"
           body="Restoring replaces ALL current notes, folders, and links with the backup file's contents. This cannot be undone with Ctrl+Z."
           confirmLabel="Restore"
@@ -59,7 +61,7 @@ function App() {
   );
 }
 
-function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, redo, onImportFromImage }) {
+function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, redo, onImportFromImage, systemDark }) {
   const tweaks   = store.tweaks;
   const folders  = store.folders;
   const notes    = store.notes;
@@ -133,7 +135,9 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
     window.stickyAPI?.setMenuBarVisible?.(!!tweaks.showMenuBar);
   }, [tweaks.showMenuBar]);
 
-  const T = themeTokens(tweaks.theme);
+  // Style × appearance (#43). With Appearance on System, systemDark flips
+  // live with the OS and the whole chrome re-renders from the other palette.
+  const T = themeTokens(tweaks.theme, resolveAppearance(tweaks.appearance, systemDark));
 
   // The global stylesheet is built once at load, long before a theme exists,
   // so the one theme-derived value it needs — the accent for the keyboard
@@ -807,7 +811,8 @@ globalStyle.textContent = `
   .md-body .mermaid-diagram svg { max-width: 100%; height: auto; }
   .md-body code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .88em; background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 3px; }
   .md-body a.note-link { color: inherit; text-decoration: underline dotted; cursor: pointer; background: rgba(0,0,0,.05); padding: 0 3px; border-radius: 2px; }
-  /* Note paper is light in every theme, so a black overlay is the right
+  /* Note paper is light in every theme (the dark appearances darken only the
+     chrome around the notes, #43), so a black overlay is the right
      direction here — it just has to be a step you can actually see next to
      the resting .05 (issue #49), and the underline goes solid to back it up. */
   .md-body a.note-link:hover { background: rgba(0,0,0,.18); text-decoration: underline solid; }

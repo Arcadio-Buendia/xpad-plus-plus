@@ -490,7 +490,7 @@ function TopChrome({T, tweaks, currentFolderName, query, setQuery, onNewNote, on
           placeholder={isTerm?'grep…':'Search notes'}
           style={{
             width:220, height:30, borderRadius: isTerm?2:8, border:`1px solid ${T.panelBorder}`,
-            background: isTerm?'#0e1319':'rgba(0,0,0,.03)', color:T.panelText,
+            background: T.inputBg, color:T.panelText,
             paddingBlock:0, paddingInlineStart:30, paddingInlineEnd:12, fontSize:13, outline:'none',
             fontFamily: 'inherit',
           }}/>
@@ -537,7 +537,7 @@ function TopChrome({T, tweaks, currentFolderName, query, setQuery, onNewNote, on
   );
 }
 function AppGlyph({T, isTerm}) {
-  if (isTerm) return <div style={{width:22,height:22, background:'#0e1319', color:T.accent, border:`1px solid ${T.panelBorder}`,
+  if (isTerm) return <div style={{width:22,height:22, background:T.inputBg, color:T.accent, border:`1px solid ${T.panelBorder}`,
     display:'grid', placeItems:'center', fontFamily:T.bodyFont, fontSize:12, fontWeight:700, marginLeft:4}}>_</div>;
   return <div style={{position:'relative', width:22, height:22, marginLeft:4}}>
     <div style={{position:'absolute', inset:0, background:'#fde8a1', borderRadius:4, transform:'rotate(-6deg)', boxShadow:'0 2px 4px rgba(0,0,0,.1)'}}/>
@@ -1197,7 +1197,7 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
         backgroundImage:`radial-gradient(${withA(T.panelText,.07)} 1px, transparent 1px)`,
         backgroundSize:`${24*view.z}px ${24*view.z}px`,
         backgroundPosition:`${view.x}px ${view.y}px`,
-        opacity: tweaks.theme==='terminal'?.3:.5,
+        opacity: isDarkSurface(T.panelBg)?.3:.5,
       }}/>
 
       <div id="desk-inner" style={{
@@ -1370,7 +1370,7 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
       {linkingFrom && (
         <div style={{
           position:'absolute', left:'50%', top:16, transform:'translateX(-50%)',
-          background:T.accent, color: tweaks.theme==='terminal'?'#0a0c10':'#fff', padding:'7px 14px',
+          background:T.accent, color:T.accentInk, padding:'7px 14px',
           borderRadius: tweaks.theme==='terminal'?2:999, fontSize:12, fontWeight:700, letterSpacing:.3,
           boxShadow:'0 4px 12px rgba(0,0,0,.2)', pointerEvents:'none', zIndex:500,
           fontFamily: '"'+tweaks.font+'", system-ui, sans-serif',
@@ -1966,7 +1966,7 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
               </svg>
               {myLinks.length > 0 && (
                 <span style={{
-                  position:'absolute', top:-2, right:-2, background:T.accent, color:'#fff',
+                  position:'absolute', top:-2, right:-2, background:T.accent, color:T.accentInk,
                   fontSize:8, minWidth:12, height:12, borderRadius:6, padding:'0 3px',
                   display:'grid', placeItems:'center', fontWeight:700, lineHeight:1,
                 }}>{myLinks.length}</span>
@@ -2320,7 +2320,7 @@ function ContextMenu({T, x, y, items, onClose, fixed}) {
             width:'100%', textAlign:'left', border:'none',
             padding:'7px 10px', borderRadius:4, fontSize:13,
             cursor: it.disabled ? 'default' : 'pointer',
-            color: it.disabled ? T.muted : it.destructive ? '#c33' : T.panelText,
+            color: it.disabled ? T.muted : it.destructive ? T.danger : T.panelText,
           }}>{it.label}</button>
           {it.submenu && <div className="ctx-sub" style={{
             position:'absolute', left:'100%', top:-4, minWidth:160,
@@ -2507,7 +2507,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
       return notes.filter(n => ids.has(n.folder)).length;
     })();
     const swatch = isAll ? T.accent : f.hue;
-    const idleBg = isTerm ? '#0e1319' : 'rgba(0,0,0,.02)';
+    const idleBg = T.rowBg;
     // Theme-derived (issue #49): the old pair moved the row by 13/255 on
     // terminal and 8/255 on flat — a hover you had to hunt for.
     const rowHoverBg = hoverBg(T);
@@ -2639,7 +2639,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
           </div>
           {isActive && (
             <button onClick={(e)=>{e.stopPropagation(); onDeleteFolder(f.id);}} title="Delete folder"
-              onMouseEnter={e=>{ e.currentTarget.style.background = withA('#cc3333', .22); e.currentTarget.style.color = '#c33'; }}
+              onMouseEnter={e=>{ e.currentTarget.style.background = withA(T.danger, .22); e.currentTarget.style.color = T.danger; }}
               onMouseLeave={e=>{ e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.muted; }}
               style={{width:20, height:20, display:'grid', placeItems:'center',
                 background:'transparent', border:'none', cursor:'pointer', color:T.muted,
@@ -2744,7 +2744,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
           </div>
           {!isAll && isActive && (
             <button onClick={(e)=>{e.stopPropagation(); onDeleteFolder(f.id);}} title="Delete folder"
-              onMouseEnter={e=>{ e.currentTarget.style.background = withA('#cc3333', .22); e.currentTarget.style.color = '#c33'; }}
+              onMouseEnter={e=>{ e.currentTarget.style.background = withA(T.danger, .22); e.currentTarget.style.color = T.danger; }}
               onMouseLeave={e=>{ e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.muted; }}
               style={{width:22, height:22, display:'grid', placeItems:'center',
                 background:'transparent', border:'none', cursor:'pointer', color:T.muted,
@@ -2774,14 +2774,12 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
       {open && (
         <div style={{
           position:'absolute', right:0, top:62, bottom:36, width:300,
-          background: isPaper ? '#f6ecd8' : T.panelBg,
-          border:`1px solid ${isPaper ? 'rgba(120,80,40,.18)' : T.panelBorder}`,
+          background: isPaper ? T.drawerBg : T.panelBg,
+          border:`1px solid ${isPaper ? withA(T.paperEdge, .18) : T.panelBorder}`,
           borderRadius: isTerm ? 2 : (isPaper ? 4 : 10),
           margin:'0 10px 0 0',
           display:'flex', flexDirection:'column', overflow:'hidden', zIndex:18000,
-          boxShadow: isPaper
-            ? 'inset 0 0 0 1px rgba(120,80,40,.12), 0 2px 0 rgba(60,40,20,.05), 0 10px 28px rgba(60,40,20,.16)'
-            : '0 10px 30px rgba(0,0,0,.12)',
+          boxShadow: isPaper ? T.drawerShadow : '0 10px 30px rgba(0,0,0,.12)',
           fontFamily: '"'+tweaks.font+'", system-ui, sans-serif',
           // SVG-noise paper grain for the paper variant
           backgroundImage: isPaper
@@ -2792,9 +2790,9 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
           {isPaper ? (
             <div style={{
               fontSize:14, fontWeight:700,
-              color:'#6a5a44', padding:'12px 12px 10px',
+              color:T.drawerInk, padding:'12px 12px 10px',
               display:'flex', alignItems:'center', gap:8,
-              borderBottom:'1px solid rgba(120,80,40,.14)',
+              borderBottom:`1px solid ${withA(T.paperEdge, .14)}`,
             }}>
               <span style={{flex:1}}>Folders</span>
               <button onClick={onCreateFolder} title="New folder" {...hoverProps(T)} style={{
@@ -2842,7 +2840,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
               width:'100%', height:30, marginTop: tree.length>0 ? 4 : 12,
               padding:'0 10px', borderRadius: isTerm ? 2 : (isPaper ? 3 : 6),
               background:'transparent', color:T.muted,
-              border: `1px dashed ${isPaper ? 'rgba(120,80,40,.28)' : T.panelBorder}`,
+              border: `1px dashed ${isPaper ? withA(T.paperEdge, .28) : T.panelBorder}`,
               fontSize:12, fontWeight:600, cursor:'pointer',
               display:'flex', alignItems:'center', justifyContent:'center', gap:6,
               transition:'background .12s, border-color .12s, color .12s, transform .12s',
@@ -2856,7 +2854,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
               }}
               onMouseLeave={e=>{
                 e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.borderColor = isPaper ? 'rgba(120,80,40,.28)' : T.panelBorder;
+                e.currentTarget.style.borderColor = isPaper ? withA(T.paperEdge, .28) : T.panelBorder;
                 e.currentTarget.style.color = T.muted;
                 e.currentTarget.style.transform = 'translateY(0)';
               }}
@@ -2908,8 +2906,8 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
           {/* Footer: + new sticky */}
           <div style={{
             padding: isPaper ? '10px 14px 14px' : '8px 12px',
-            borderTop: isPaper ? '1px dashed rgba(120,80,40,.28)' : `1px solid ${T.hairline}`,
-            background: isTerm ? '#0a0c10' : (isPaper ? 'transparent' : 'rgba(0,0,0,.02)'),
+            borderTop: isPaper ? `1px dashed ${withA(T.paperEdge, .28)}` : `1px solid ${T.hairline}`,
+            background: T.drawerFootBg,
             fontSize:11, color:T.muted, display:'flex', alignItems:'center', gap:8,
           }}>
             {isPaper ? (
@@ -2938,7 +2936,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
                 onMouseLeave={e=>{ e.currentTarget.style.background = T.accent; }}
                 style={{
                 flex:1, height:28, padding:'0 10px', borderRadius: isTerm?2:6,
-                background:T.accent, color: isTerm?'#0a0c10':'#fff', border:'none',
+                background:T.accent, color:T.accentInk, border:'none',
                 fontWeight:700, fontSize:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6,
                 transition:'background .1s',
               }}>
@@ -2977,6 +2975,12 @@ function TweakPanel({T, tweaks, update, onClose, onImportFromImage}) {
       <Label>Visual style</Label>
       <Segmented T={T} value={tweaks.theme} onChange={v=>update({theme:v})} options={[
         {id:'paper',label:'Paper'},{id:'flat',label:'Flat'},{id:'terminal',label:'Terminal'}
+      ]}/>
+      {/* Independent of the style (#43): every style has a light and a dark
+          palette, and System follows the OS light/dark setting live. */}
+      <Label>Appearance</Label>
+      <Segmented T={T} value={tweaks.appearance} onChange={v=>update({appearance:v})} options={[
+        {id:'light',label:'Light'},{id:'dark',label:'Dark'},{id:'system',label:'System'}
       ]}/>
       <Label>Font</Label>
       <Segmented T={T} value={tweaks.font} onChange={v=>update({font:v})} options={[
@@ -3044,7 +3048,7 @@ function Segmented({T, value, onChange, options}) {
         // Only the inactive segments take a hover — repainting the selected
         // one would read as "this is now something else". (issue #49)
         return (
-          <button key={o.id} onClick={()=>onChange(o.id)}
+          <button key={o.id} onClick={()=>onChange(o.id)} aria-pressed={active}
             onMouseEnter={e=>{ if(!active) e.currentTarget.style.background = hoverBg(T); }}
             onMouseLeave={e=>{ if(!active) e.currentTarget.style.background = 'transparent'; }}
             style={{

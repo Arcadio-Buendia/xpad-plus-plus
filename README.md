@@ -39,6 +39,8 @@ This is that app. It runs on **Linux, macOS, and in the browser**.
 
 Paper is the default. Flat if you want something quieter. Terminal if you've made peace with what you are.
 
+Each one comes in light and dark, and **Preferences → Appearance → System** follows your desktop's light/dark setting as you flip it. The notes themselves stay pastel either way.
+
 <table>
 <tr>
 <td><img src="readme-assets/03-flat.png" alt="Flat theme" /></td>
