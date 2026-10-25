@@ -178,6 +178,14 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   of it, which is what #62 was about — is a manual check on a real desktop:
   maximize, quit, reopen; it must come back maximized, edge to edge, title
   bar below the top bar, and un-maximize to the size it had before.
+- `tasks.e2e.mjs` — task lists (#65): `- [ ]` / `- [x]` items render as
+  checkboxes (a fenced one stays code) that are exactly one line tall;
+  clicking one ticks that item — and only that one, among identical texts —
+  in the body on disk without opening the editor, selecting text, moving
+  the note or taking focus; a press dragged off a box does nothing; Ctrl+Z
+  unticks; a double-click is two toggles, never an edit; the tick survives
+  a reload; double-clicking a task's text still puts the caret on that
+  word; Enter in the editor continues a task item with `- [ ] `.
 
 ## Verifying inside the flatpak (pre-release)
 

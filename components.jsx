@@ -1860,6 +1860,19 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
   // string actually changes.
   const bodyHtml = useMemo(() => mdToHtml(note.body), [note.body]);
 
+  // Clicking a task checkbox (#65) edits the body in place, without opening
+  // the editor. It is an app-level edit like a pin toggle, so it takes its
+  // own undo step; bodyRef moves on at once so a second click landing before
+  // the re-render toggles the new body rather than the stale one.
+  const isTaskBox = (target) => !!(target && target.closest && target.closest('.task-list-item-checkbox'));
+  const toggleTask = (line) => {
+    const next = toggleTaskItem(bodyRef.current || '', line);
+    if (next == null) return;
+    onSnapshot && onSnapshot();
+    bodyRef.current = next;
+    onChange({ body: next });
+  };
+
   // Shared move-note drag. The header is the primary handle; the free
   // stretch of the footer bar (left of the color dots) reuses it so a note
   // whose header sits outside the viewport can still be moved (issue #16).
@@ -2094,7 +2107,10 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
         </button>
       </div>
 
-      <div onDoubleClick={()=>{
+      <div onDoubleClick={(e)=>{
+          // Two quick clicks on a task checkbox are two toggles, not a
+          // request to edit (#65).
+          if (isTaskBox(e.target)) return;
           // Read the word the browser just selected BEFORE the preview is
           // unmounted by the state change below (#35).
           if (!editing) {
@@ -2111,7 +2127,7 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
           // so the browser natively clamps the selection to this note (see
           // the global stylesheet). Touch selection uses long-press handles
           // and needs no help. (#30)
-          if (editing || e.button!==0 || e.pointerType==='touch') return;
+          if (editing || e.button!==0 || e.pointerType==='touch' || isTaskBox(e.target)) return;
           const box = bodyBoxRef.current; if (!box) return;
           box.classList.add('sel-src');
           document.body.classList.add('sel-lock');
@@ -2266,7 +2282,18 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
           />
         ) : (
           <div className="md-body" dir="auto" ref={mdBodyRef} dangerouslySetInnerHTML={{__html: bodyHtml}}
+            // A press on a task checkbox must neither start a text selection
+            // nor focus the checkbox: a focused <input> would swallow Ctrl+Z
+            // (the global undo handler leaves inputs alone).
+            onMouseDown={(e)=>{ if (isTaskBox(e.target)) e.preventDefault(); }}
             onClick={(e)=>{
+              // The checkbox's own state is never trusted: cancel the native
+              // toggle and flip the body, which re-renders it (#65).
+              if (isTaskBox(e.target)) {
+                e.preventDefault();
+                toggleTask(Number(e.target.closest('.task-list-item-checkbox').dataset.taskLine));
+                return;
+              }
               // The mouseup that ends a text-selection drag arrives as a
               // click on whatever element the pointer was released over. If
               // text is highlighted, the user was selecting — not asking to

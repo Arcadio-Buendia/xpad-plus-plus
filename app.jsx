@@ -852,6 +852,23 @@ globalStyle.textContent = `
   .md-body ol ol { list-style: lower-alpha; }
   .md-body ol ol ol { list-style: lower-roman; }
   .md-body li { margin: 0; }
+  /* Task list items (#65). The checkbox is drawn in the note's own ink, so it
+     suits every theme, colour and font; it is inline and shorter than the
+     text, so the line keeps exactly its height (#26). In a bullet list it
+     takes the bullet's place — the hang is capped at the 18px list indent so
+     a big font can't push it out of the list; numbered items keep their
+     number. A ticked item's text dims a little, never its sub-items. */
+  .md-body ul > li.task-list-item { list-style: none; }
+  .md-body .task-list-item-checkbox { appearance: none; box-sizing: border-box; position: relative;
+    width: .8em; height: .8em; margin: 0; margin-inline-end: .3em; padding: 0; vertical-align: -.1em;
+    font-size: inherit; color: inherit; background: transparent; cursor: pointer;
+    border: max(1px, .09em) solid currentColor; border-radius: .18em; opacity: .7; }
+  .md-body ul > li.task-list-item > .task-list-item-checkbox { margin-inline-start: max(-1.1em, -18px); }
+  .md-body .task-list-item-checkbox:checked { opacity: 1; }
+  .md-body .task-list-item-checkbox:checked::after { content: ""; position: absolute; left: 32%; top: 6%;
+    width: 24%; height: 54%; border: solid currentColor; border-width: 0 max(1px, .1em) max(1px, .1em) 0;
+    transform: rotate(45deg); }
+  .md-body .task-list-item-checkbox:checked + .task-list-item-text { opacity: .6; }
   .md-body blockquote { margin: 0; padding: 0 0 0 10px; border-left: 3px solid rgba(0,0,0,.25); opacity: .85; }
   .md-body pre { margin: 0; padding: 6px 8px; background: rgba(0,0,0,.06); border-radius: 4px; overflow-x: auto; }
   .md-body pre code { display: block; background: transparent; padding: 0; }

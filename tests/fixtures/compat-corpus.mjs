@@ -12,6 +12,10 @@
 //                  tests/compat-report.mjs so the user can decide.
 //
 // A `note` field carries per-case commentary (reclassifications, findings).
+// A `tasks` field marks the one deliberate, asserted exception (#65): GFM
+// task items render a checkbox now. It lists the expected checkbox states,
+// and tests/compat.test.mjs requires that undoing exactly the task markup
+// gives back the old output byte for byte.
 
 export const corpus = [
   /* ------------------------------ same ------------------------------ */
@@ -56,6 +60,12 @@ export const corpus = [
   { name: 'very long unbroken line', input: 'a'.repeat(500), expect: 'same' },
   { name: 'single pipe mid-sentence', input: 'either | or', expect: 'same',
     note: 'spec-listed as collateral; outputs are identical (no table without a delimiter row), so reclassified same per instructions' },
+  { name: 'task lookalike: "[ X]" is not GFM', input: '- [ X] x', expect: 'same',
+    note: '#65 task items are strictly GFM ("[ ]", "[x]", "[X]") — lenient spellings stay text' },
+  { name: 'task lookalike: no space after the bullet', input: '-[ ] x', expect: 'same' },
+  { name: 'task lookalike: brackets outside a list', input: '[ ] not a list', expect: 'same' },
+  { name: 'task lookalike: marker inside inline code', input: '- `[ ] code`', expect: 'same' },
+  { name: 'task lookalike: no space after the bracket', input: '- [x]no space', expect: 'same' },
 
   /* ---------------------------- intended ---------------------------- */
   { name: 'ordered list 1. 2.', input: '1. a\n2. b', expect: 'intended' },
@@ -88,6 +98,19 @@ export const corpus = [
   { name: 'list inside blockquote', input: '> - a\n> - b', expect: 'intended' },
   { name: 'mermaid fence', input: '```mermaid\ngraph TD;\nA-->B;\n```', expect: 'intended',
     note: 'new output must carry the <pre class="mermaid-src"> marker NoteCard upgrades' },
+
+  /* -------------------- intended: task lists (#65) --------------------
+   * Notes that already hold "- [ ] x" show a checkbox instead of the literal
+   * "[ ] " from now on. That is the whole difference: compat.test.mjs strips
+   * the task markup from the new output and the marker from the old, and
+   * the two must then match exactly. */
+  { name: 'task item unchecked', input: '- [ ] todo', expect: 'intended', tasks: [false] },
+  { name: 'task items checked [x] and [X]', input: '- [x] done\n- [X] Done', expect: 'intended', tasks: [true, true] },
+  { name: 'task item with a star bullet', input: '* [ ] star', expect: 'intended', tasks: [false] },
+  { name: 'nested task items', input: '- [ ] parent\n  - [x] child', expect: 'intended', tasks: [false, true] },
+  { name: 'task item next to a plain bullet', input: '- [ ] task\n- plain bullet', expect: 'intended', tasks: [false] },
+  { name: 'task item with inline markdown', input: '- [ ] **bold** and `code`', expect: 'intended', tasks: [false] },
+  { name: 'task item after text and a blank line', input: 'Groceries\n\n- [ ]  milk', expect: 'intended', tasks: [false] },
 
   /* --------------------------- collateral --------------------------- */
   { name: 'multi-line paragraph', input: 'line one\nline two', expect: 'collateral',

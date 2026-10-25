@@ -113,6 +113,9 @@ const SEED = {
  *     block); other fences render <pre><code class="language-x">.
  *   - anchors carry data-weblink, which the note-body click delegate
  *     dispatches on to open links outside the app (see NoteCard).
+ *   - GFM task items ("- [ ] todo", "1. [x] done") render a checkbox that
+ *     carries its body line (data-task-line); clicking it hands that line to
+ *     toggleTaskItem (issue #65).
  * Preview <-> edit parity (issue #26) is preserved across the swap — the
  * rendered preview must occupy the same lines as the raw text in the
  * editing textarea (tests/preview-parity.test.mjs is the contract):
@@ -151,24 +154,36 @@ const IMAGE_REF_RE = /^sticky-image:\/\/[0-9a-f]{16}\.(?:png|jpg|gif|webp)$/;
 // keeps "N blank lines in the textarea" = "N empty lines in the preview"
 // (issue #26) — and, deliberately, what makes a blank line between bullets
 // split the list instead of forming one loose list.
+// `srcLines` receives, for every output line, the source line it came from:
+// markdown-it's token line numbers count the padding, and a task checkbox
+// has to name the body line it toggles.
 const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-function markBlankLines(src) {
+function markBlankLines(src, srcLines = []) {
   const out = [];
+  const emit = (i, ...lns) => { for (const l of lns) { out.push(l); srcLines.push(i); } };
   let fence = null;
+  let i = -1;
   for (const ln of src.split('\n')) {
+    i++;
     const m = ln.match(FENCE_LINE);
     if (fence) {
       // Inside a fence blank lines are code, not vertical rhythm.
-      out.push(ln);
+      emit(i, ln);
       if (m && m[1][0] === fence.marker && m[1].length >= fence.len && m[2].trim() === '') fence = null;
       continue;
     }
-    if (m) { fence = { marker: m[1][0], len: m[1].length }; out.push(ln); continue; }
-    if (ln.trim() === '') { out.push('', BLANK_LINE, ''); continue; }
-    out.push(ln);
+    if (m) { fence = { marker: m[1][0], len: m[1].length }; emit(i, ln); continue; }
+    if (ln.trim() === '') { emit(i, '', BLANK_LINE, ''); continue; }
+    emit(i, ln);
   }
   return out.join('\n');
 }
+
+// A GFM task-list marker at the start of a list item's first paragraph:
+// exactly "[ ]", "[x]" or "[X]", then whitespace or nothing. Lenient
+// spellings ("[ X]", "[]", "[  ]") stay text on purpose — a note downloaded
+// or copied as markdown must mean the same thing on GitHub, Obsidian & co.
+const TASK_MARKER = /^\[([ xX])\](?=[ \t\n]|$)[ \t]*/;
 
 let _md = null;
 function getMarkdownIt() {
@@ -204,6 +219,36 @@ function getMarkdownIt() {
       const orig = lines.slice(tok.map[0], tok.map[1]).join('\n');
       if (orig !== tok.content && orig.trim() === tok.content) tok.content = orig;
     }
+  });
+  // Task items (issue #65): a list item whose first paragraph opens with a
+  // TASK_MARKER gets a checkbox in place of the marker text. The checkbox is
+  // a renderer token, never parsed HTML (html:false stands), and carries the
+  // BODY line of its marker — what a click hands to toggleTaskItem. The
+  // item's own text is wrapped in a span so a checked item can be dimmed
+  // without dimming its nested sub-items. Inline elements only: the line
+  // count stays what the textarea shows (#26). Runs before inline parsing,
+  // so the marker never reaches it as text.
+  md.core.ruler.before('inline', 'sticky_task_items', state => {
+    const toks = state.tokens;
+    const out = [];
+    for (let i = 0; i < toks.length; i++) {
+      const tok = toks[i];
+      const m = tok.type === 'inline' && i >= 2 && toks[i - 1].type === 'paragraph_open'
+        && toks[i - 2].type === 'list_item_open' && TASK_MARKER.exec(tok.content);
+      if (!m) { out.push(tok); continue; }
+      const line = state.env.srcLines ? state.env.srcLines[tok.map[0]] : tok.map[0];
+      if (state.env.taskLines) state.env.taskLines.push(line);
+      toks[i - 2].attrJoin('class', 'task-list-item');
+      const box = new state.Token('task_checkbox', 'input', 0);
+      box.attrs = [['type', 'checkbox'], ['class', 'task-list-item-checkbox'],
+        ['data-task-line', String(line)], ['tabindex', '-1']];
+      if (m[1] !== ' ') box.attrPush(['checked', '']);
+      const open = new state.Token('task_text_open', 'span', 1);
+      open.attrSet('class', 'task-list-item-text');
+      tok.content = tok.content.slice(m[0].length);
+      out.push(box, open, tok, new state.Token('task_text_close', 'span', -1));
+    }
+    state.tokens = out;
   });
   md.core.ruler.push('sticky_note_blocks', state => {
     for (const tok of state.tokens) {
@@ -251,10 +296,40 @@ function getMarkdownIt() {
   return _md;
 }
 
+// The body as markdown-it gets it, plus the env the core rules read. CR and
+// CRLF become LF first — exactly what the editing textarea does to them — so
+// one source line is one line on both sides and task line numbers match the
+// body's.
+function prepareNoteMarkdown(src) {
+  const srcLines = [];
+  const marked = markBlankLines((src || '').replace(/\uE000/g, '').replace(/\r\n?/g, '\n'), srcLines);
+  return { marked, env: { srcLines, taskLines: [] } };
+}
+
 function mdToHtml(src) {
-  const marked = markBlankLines((src || '').replace(/\uE000/g, ''));
-  return getMarkdownIt().render(marked)
+  const { marked, env } = prepareNoteMarkdown(src);
+  return getMarkdownIt().render(marked, env)
     .split(`<p dir="auto">${BLANK_LINE}</p>`).join(BLANK_LINE_P);
+}
+
+// PURE. A click on a task checkbox (#65): flip "[ ]" <-> "[x]" on body line
+// `line` (0-based, as data-task-line carries it). null unless the renderer
+// itself draws a checkbox for that line, so a "- [ ]" inside a code fence or
+// inline code can never be toggled whatever line is asked for. Only the one
+// bracket character changes; line endings (CRLF too) and the rest of the
+// line are kept byte for byte.
+const TASK_LINE = /^((?:[ \t]*(?:>|(?:[-*+]|\d{1,9}[.)])(?=[ \t])))*[ \t]*\[)([ xX])\](?=[ \t]|$)/;
+function toggleTaskItem(body, line) {
+  const src = typeof body === 'string' ? body : '';
+  const parts = src.split(/(\r\n?|\n)/);    // lines at even indexes, breaks between
+  if (!Number.isInteger(line) || line < 0 || 2 * line >= parts.length) return null;
+  const { marked, env } = prepareNoteMarkdown(src);
+  getMarkdownIt().parse(marked, env);
+  const text = parts[2 * line];
+  const m = env.taskLines.includes(line) && TASK_LINE.exec(text);
+  if (!m) return null;
+  parts[2 * line] = m[1] + (m[2] === ' ' ? 'x' : ' ') + text.slice(m[1].length + 1);
+  return parts.join('');
 }
 
 // Mermaid renders on demand (NoteCard swaps marked fences after mount),
@@ -543,7 +618,12 @@ function markdownVisibleText(src) {
     const mq = /^[ \t]*(?:>[ \t]?)+/.exec(rest);
     if (mq) { off += mq[0].length; rest = rest.slice(mq[0].length); }
     const ml = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/.exec(rest);
-    if (ml) { off += ml[0].length; rest = rest.slice(ml[0].length); }
+    if (ml) {
+      off += ml[0].length; rest = rest.slice(ml[0].length);
+      // A task item's "[ ]" / "[x]" renders as a checkbox, not text (#65).
+      const mt = TASK_MARKER.exec(rest);
+      if (mt) { off += mt[0].length; rest = rest.slice(mt[0].length); }
+    }
     const mh = /^[ \t]{0,3}#{1,6}(?:[ \t]+|$)/.exec(rest);
     if (mh) {
       off += mh[0].length;
@@ -649,8 +729,14 @@ function editListOnEnter(value, selStart, selEnd, shiftKey) {
   if (!m) return null;                  // not a list / blockquote line
   const [, indent, marker, spaces, content] = m;
   // Caret sitting in the indent/marker (not yet in the content) -> default.
-  if (selStart < lineStart + indent.length + marker.length + spaces.length) return null;
-  if (content.trim() === '') {
+  const contentStart = lineStart + indent.length + marker.length + spaces.length;
+  if (selStart < contentStart) return null;
+  // A task item ("- [ ] x", #65) continues as a fresh unchecked one; its
+  // "[ ]" counts as part of the marker, so an item with nothing after it is
+  // an empty item.
+  const task = marker !== '>' && TASK_MARKER.exec(content);
+  if (task && selStart < contentStart + task[0].length) return null;
+  if (content.trim() === '' || (task && content.length === task[0].length)) {
     // Empty item: drop the marker (and its indent) — this ends the list.
     return { start: lineStart, end: lineEnd, text: '', caret: lineStart };
   }
@@ -658,7 +744,7 @@ function editListOnEnter(value, selStart, selEnd, shiftKey) {
   // (ordered markers increment: "3." continues as "4.").
   const num = marker.match(/^(\d+)([.)])$/);
   const next = num ? (Number(num[1]) + 1) + num[2] : marker;
-  const text = `\n${indent}${next} `;
+  const text = `\n${indent}${next} ${task ? '[ ] ' : ''}`;
   return { start: selStart, end: selStart, text, caret: selStart + text.length };
 }
 
@@ -1729,4 +1815,4 @@ function downloadUrlForPlatform(version) {
 }
 const MOBILE_BANNER_DISMISSED_KEY = 'stickies.mobileBannerDismissed';
 const MOBILE_BANNER_MAX_WIDTH = 640;
-Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_COLORS, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, appendOnOwnLine, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editOnPaste, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notePasteAction, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });
+Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_COLORS, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, appendOnOwnLine, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editOnPaste, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notePasteAction, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, toggleTaskItem, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });

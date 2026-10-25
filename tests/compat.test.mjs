@@ -4,7 +4,9 @@
 // from e840165) rendered — these are the shapes existing users' notes rely
 // on. 'intended' and 'collateral' cases carry no old-vs-new equality
 // assertions yet: they are cataloged by tests/compat-report.mjs and await
-// user decisions (the heading invariant at the bottom still covers them).
+// user decisions — except the #65 task-list cases (a `tasks` field), whose
+// one difference is pinned below (the heading invariant further down still
+// covers them all).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { corpus } from './fixtures/compat-corpus.mjs';
@@ -28,3 +30,24 @@ test('compat invariant: no corpus case renders a heading without a # line', () =
   }).map(c => c.name);
   assert.deepEqual(offenders, []);
 });
+// The one deliberate exception (#65): a GFM task item renders a checkbox
+// where the old converter showed the literal "[ ] ". Undo exactly that —
+// the li class, the checkbox and the text span on the new side, the marker
+// (and the spaces after it) on the old side — and the rest must still be
+// byte-identical. The checkboxes themselves must match the markers.
+const TASK_BOX = /<input type="checkbox" class="task-list-item-checkbox"[^>]*>/g;
+const withoutTaskMarkup = (html) => html
+  .replace(/ class="task-list-item"/g, '')
+  .replace(TASK_BOX, '')
+  .replace(/<span class="task-list-item-text">|<\/span>/g, '');
+const withoutTaskMarkers = (html) => html.replace(/(<li dir="auto">)\[[ xX]\](?:[ \t]+|(?=<))/g, '$1');
+
+for (const c of corpus.filter(c => c.tasks)) {
+  test(`compat exception (#65 task list): ${c.name}`, () => {
+    const html = newMdToHtml(c.input);
+    assert.deepEqual([...html.matchAll(TASK_BOX)].map(([tag]) => / checked=""/.test(tag)), c.tasks,
+      `checkbox states for ${JSON.stringify(c.input)}`);
+    assert.equal(withoutTaskMarkup(html), withoutTaskMarkers(oldMdToHtml(c.input)),
+      `nothing but the task markup may differ for ${JSON.stringify(c.input)}`);
+  });
+}

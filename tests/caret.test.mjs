@@ -287,6 +287,17 @@ test('headings and list items', () => {
   assertAtSourceWord(body, 'bullet');
 });
 
+test('task list items: the "[ ]" / "[x]" is a checkbox, not text (#65)', () => {
+  const body = '- [ ] buy milk\n  - [x] fix x bug\n1. [X] call mom\n> - [ ] quoted task';
+  assertAtSourceWord(body, 'milk');
+  assertAtSourceWord(body, 'bug');
+  assertAtSourceWord(body, 'mom');
+  assertAtSourceWord(body, 'quoted');
+  // The only VISIBLE "x" is the word in "fix x bug" — the one in "[x]" is
+  // the checkbox, and counting it would make the two sides disagree.
+  assert.equal(clickWord(body, 'x'), body.indexOf('fix x') + 4);
+});
+
 test('blockquotes, tables and fenced code', () => {
   const body = '> quoted words\n\n| a | bee |\n| --- | --- |\n| cee | dee |\n\n```js\nconst answer = 42\n```';
   assertAtSourceWord(body, 'quoted');
@@ -386,6 +397,7 @@ test('the projection reproduces the rendered text of real notes', () => {
     'Title\n===\nbody',
     '![](sticky-image://0123456789abcdef.png)\ncaption word',
     '[evil](javascript:alert(1))\nVisit www.example.com now',
+    '- [ ] milk\n  - [x] oat\n\n1. [ ] bread\n> - [X] quoted\n- [ X] not a task',
   ];
   for (const body of bodies) {
     assert.equal(markdownVisibleText(body).text, renderedTextOf(body),
