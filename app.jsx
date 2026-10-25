@@ -278,6 +278,14 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
     updateFolder(id, { parent: parentId });
   };
 
+  // The drawer's "Change color…" (issue #55). Undoable like a move; picking
+  // the colour the folder already has is not a change and records nothing.
+  const recolorFolder = (id, hue) => {
+    if (!folders[id] || folders[id].hue === hue) return;
+    takeSnapshot();
+    updateFolder(id, { hue });
+  };
+
   const moveNoteToFolder = (noteId, folderId) => {
     // Only snapshot if the folder is actually changing — drag-to-same-folder
     // (e.g. a header drag that hovers a drop zone briefly) shouldn't log an
@@ -739,6 +747,7 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
         renamingFolder={renamingFolder} setRenamingFolder={setRenamingFolder}
         onDeleteFolder={(id)=>setConfirmDel({kind:'folder', id})}
         onMoveFolderToParent={moveFolderToParent}
+        onRecolorFolder={recolorFolder}
         onDropNoteOnFolder={moveNoteToFolder}
         onDropNotesOnFolder={moveNotesToFolder}
         onCreateNote={createNote}

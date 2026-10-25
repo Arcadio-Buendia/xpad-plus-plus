@@ -15,7 +15,7 @@ vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
 const {
   sanitizeFolderParents, folderSubtreeIds, canMoveFolder, folderPath,
-  flattenFolderTree, withDefaults,
+  flattenFolderTree, withDefaults, FOLDER_COLORS, FOLDER_HUES,
 } = sandbox.window;
 
 // Values built inside the vm belong to another realm (different Object /
@@ -166,4 +166,32 @@ test('withDefaults seed data forms a valid tree with nested folders', () => {
   // The seed nests Sprints and Reviews under Workflow.
   assert.ok(rows.some(r => r.id === 'sprints' && r.depth === 1));
   assert.ok(rows.some(r => r.id === 'reviews' && r.depth === 1));
+});
+
+/* ---------------- folder colours (#55) ---------------- */
+
+test('FOLDER_COLORS names every folder hue, in the order new folders cycle through', () => {
+  // The "Change color…" list offers exactly the palette new folders are
+  // dealt from, so every colour a folder can already have is pickable and
+  // the palette itself is unchanged — existing folders keep their look.
+  assert.deepEqual(plain(FOLDER_COLORS.map(c => c.hue)), plain(FOLDER_HUES));
+  assert.deepEqual(plain(FOLDER_HUES),
+    ['#d97757', '#5a82c9', '#8a6fbf', '#4c9e6b', '#c4843a', '#b84a6b', '#3fa89a', '#8a8f3d']);
+  for (const c of FOLDER_COLORS) assert.ok(typeof c.name === 'string' && c.name, `${c.hue} needs a name`);
+  assert.equal(new Set(FOLDER_COLORS.map(c => c.name)).size, FOLDER_COLORS.length, 'names are distinct');
+});
+
+test('withDefaults keeps a chosen folder colour and never invents one', () => {
+  // A backup is the store as JSON; restoring runs it back through
+  // withDefaults. A recoloured folder must come back recoloured, and a
+  // folder written without any hue must stay without one (it renders as it
+  // always has) rather than being dealt a colour on load.
+  const backup = JSON.stringify({ folders: {
+    root: { id: 'root', name: 'All notes', parent: null, hue: '#888' },
+    a: { id: 'a', name: 'A', parent: 'root', hue: '#b84a6b' },
+    b: { id: 'b', name: 'B', parent: 'a' },
+  } });
+  const out = withDefaults(JSON.parse(backup));
+  assert.equal(out.folders.a.hue, '#b84a6b');
+  assert.equal('hue' in out.folders.b, false);
 });

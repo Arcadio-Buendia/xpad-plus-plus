@@ -2324,10 +2324,15 @@ function ContextMenu({T, x, y, items, onClose, fixed}) {
           <button disabled={!!it.disabled}
             onClick={()=>{ it.onClick?.(); if(!it.submenu && !it.keepOpen) onClose(); }} style={{
             width:'100%', textAlign:'left', border:'none',
+            ...(it.dot ? {display:'flex', alignItems:'center', gap:8} : null),
             padding:'7px 10px', borderRadius:4, fontSize:13,
             cursor: it.disabled ? 'default' : 'pointer',
             color: it.disabled ? T.muted : it.destructive ? T.danger : T.panelText,
-          }}>{it.label}</button>
+          }}>
+            {/* Same swatch as a submenu row's, for flat colour lists. */}
+            {it.dot && <span style={{width:10, height:10, borderRadius:3, background:it.dot, border:'1px solid rgba(0,0,0,.1)', flex:'none'}}/>}
+            {it.label}
+          </button>
           {it.submenu && <div className="ctx-sub" style={{
             position:'absolute', left:'100%', top:-4, minWidth:160,
             background:T.panelBg, border:`1px solid ${T.panelBorder}`, borderRadius:8, padding:4,
@@ -2411,7 +2416,7 @@ function ConfirmDialog({T, title, body, onCancel, onConfirm, confirmLabel='Delet
 /* ==================================================================== */
 function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFolder,
   onCreateFolder, onRenameFolder, renamingFolder, setRenamingFolder, onDeleteFolder,
-  onMoveFolderToParent,
+  onMoveFolderToParent, onRecolorFolder,
   onDropNoteOnFolder, onDropNotesOnFolder, onCreateNote,
   open, setOpen,
   folderOrder, setFolderOrder}) {
@@ -2422,7 +2427,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
   // is in. Shape: {id, zone: 'before'|'after'|'into'} | null.
   const [dragOver, setDragOver] = useState(null);
   // Right-click context menu on a folder row, at viewport coordinates.
-  // Shape: {x, y, folderId, mode?: 'move'} | null.
+  // Shape: {x, y, folderId, mode?: 'move'|'color'} | null.
   const [folderMenu, setFolderMenu] = useState(null);
   // Collapsed subtrees (drawer-local UI state, not persisted). A collapsed
   // parent hides all of its descendant rows; its own count still reflects
@@ -2458,6 +2463,20 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [folderMenu]);
+
+  // A press on a row's colour stripe must not turn into a drag of the row.
+  // The drag starts on the (draggable) row, not on the stripe, so the stripe
+  // records the press here and the row's dragstart checks it.
+  const stripePress = useRef(null);
+  useEffect(() => {
+    const clear = () => { stripePress.current = null; };
+    window.addEventListener('pointerup', clear);
+    window.addEventListener('pointercancel', clear);
+    return () => {
+      window.removeEventListener('pointerup', clear);
+      window.removeEventListener('pointercancel', clear);
+    };
+  }, []);
 
   // DFS-flattened folder tree ({id, depth, hasChildren} rows). Sibling order
   // comes from folderOrder, with folders not yet in the order appended
@@ -2560,6 +2579,21 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
       setFolderMenu({x: e.clientX, y: e.clientY, folderId: f.id});
     };
 
+    // Clicking a folder's colour stripe opens its colour list directly (the
+    // menu's "Change color…" list) without opening the folder. The button is
+    // wider than the few-pixel stripe it holds, so it is easy to hit.
+    const stripeProps = {
+      title: 'Change color',
+      'aria-label': `Change the color of ${f.name}`,
+      onPointerDown: () => { stripePress.current = f.id; },
+      onClick: (e) => {
+        e.stopPropagation();
+        const r = e.currentTarget.getBoundingClientRect();
+        setFolderMenu({x: r.right, y: r.top, folderId: f.id, mode: 'color'});
+      },
+      onDoubleClick: (e) => e.stopPropagation(),
+    };
+
     // ─── Paper variant: washi-tape row, no chip icon (real folders only) ───
     if (isPaper && !isAll) {
       const washiColor = WASHI[f.hue] || f.hue;
@@ -2571,6 +2605,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
           data-folder-id={f.id}
           draggable={renamingFolder !== f.id}
           onDragStart={e => {
+            if (stripePress.current === f.id) { e.preventDefault(); return; }
             e.dataTransfer.setData('folder-id', f.id);
             e.dataTransfer.effectAllowed = 'move';
           }}
@@ -2621,15 +2656,20 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
           onMouseEnter={e=>{ if(!isActive && !isDropTarget) e.currentTarget.style.background = paperHoverBg; }}
           onMouseLeave={e=>{ if(!isActive && !isDropTarget) e.currentTarget.style.background = paperIdleBg; }}
         >
-          {/* Washi tape stripe */}
-          <div style={{
-            position:'absolute', left:4, top:7, bottom:7, width:6,
-            background: washiColor,
-            backgroundImage:
-              'repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,.22) 3px 4px)',
-            boxShadow: `inset 0 0 0 0.5px ${washiColor}, 0 1px 2px rgba(0,0,0,.1)`,
-            opacity: .85,
-          }}/>
+          {/* Washi tape stripe — click it to recolour the folder */}
+          <button {...stripeProps} style={{
+            position:'absolute', left:0, top:0, bottom:0, width:16,
+            padding:0, border:'none', background:'transparent', cursor:'pointer',
+          }}>
+            <div data-folder-stripe style={{
+              position:'absolute', left:4, top:7, bottom:7, width:6,
+              background: washiColor,
+              backgroundImage:
+                'repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,.22) 3px 4px)',
+              boxShadow: `inset 0 0 0 0.5px ${washiColor}, 0 1px 2px rgba(0,0,0,.1)`,
+              opacity: .85,
+            }}/>
+          </button>
           {chevronSlot && <div style={{paddingLeft:8, flex:'none', display:'flex'}}>{chevronSlot}</div>}
           <div style={{flex:1, minWidth:0, paddingLeft: chevronSlot ? 0 : 8}}>
             {renamingFolder===f.id ? (
@@ -2670,6 +2710,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
         draggable={!isAll && renamingFolder !== f.id}
         onDragStart={e => {
           if (isAll) return;
+          if (stripePress.current === f.id) { e.preventDefault(); return; }
           e.dataTransfer.setData('folder-id', f.id);
           e.dataTransfer.effectAllowed = 'move';
         }}
@@ -2730,7 +2771,17 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
         onMouseEnter={e=>{ if(!isActive && !isDropTarget) e.currentTarget.style.background = rowHoverBg; }}
         onMouseLeave={e=>{ if(!isActive && !isDropTarget) e.currentTarget.style.background = idleBg; }}
       >
-        <div style={{width:4, borderRadius:2, background:swatch, flex:'none'}}/>
+        {isAll
+          ? <div style={{width:4, borderRadius:2, background:swatch, flex:'none'}}/>
+          : <button {...stripeProps} style={{
+              // 16px to hit, 4px in the layout: the negative margins give the
+              // extra width (and the row's full height) back to the padding.
+              position:'relative', flex:'none', alignSelf:'stretch', width:16, margin:'-11px -6px',
+              padding:0, border:'none', background:'transparent', cursor:'pointer',
+            }}>
+              <div data-folder-stripe style={{position:'absolute', left:6, top:11, bottom:11, width:4,
+                borderRadius:2, background:swatch}}/>
+            </button>}
         <div style={{flex:1, minWidth:0, display:'flex', alignItems:'center', gap:10}}>
           {chevronSlot}
           {isAll
@@ -2876,7 +2927,7 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
             </button>
           </div>
 
-          {folderMenu && folderMenu.mode !== 'move' && (
+          {folderMenu && !folderMenu.mode && (
             <ContextMenu T={T} x={folderMenu.x} y={folderMenu.y} fixed
               onClose={()=>setFolderMenu(null)}
               items={[
@@ -2886,6 +2937,8 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
                 // menu — a hover submenu opens to the right, and the drawer
                 // hugs the window's right edge.
                 {label:'Move to…', keepOpen:true, onClick:()=>setFolderMenu(m => m && ({...m, mode:'move'}))},
+                // Same swap, for the colour list (issue #55).
+                {label:'Change color…', keepOpen:true, onClick:()=>setFolderMenu(m => m && ({...m, mode:'color'}))},
                 {divider:true},
                 {label:'Delete folder', destructive:true, onClick:()=>onDeleteFolder(folderMenu.folderId)},
               ]}
@@ -2913,6 +2966,15 @@ function FoldersDrawer({T, tweaks, folders, notes, currentFolder, setCurrentFold
                 }
                 return targets.length ? targets : [{label:'No other folder to move into', disabled:true}];
               })()}
+            />
+          )}
+          {folderMenu && folderMenu.mode === 'color' && (
+            <ContextMenu T={T} x={folderMenu.x} y={folderMenu.y} fixed
+              onClose={()=>setFolderMenu(null)}
+              items={FOLDER_COLORS.map(c => ({
+                label: c.name, dot: c.hue,
+                onClick: ()=>onRecolorFolder(folderMenu.folderId, c.hue),
+              }))}
             />
           )}
 

@@ -23,7 +23,22 @@ const NOTE_COLORS = [
   { id: "white",  name: "Paper",   paper: "#fafaf4", flat: "#ffffff", term: "#fafaf4", ink: "#222" },
 ];
 
-const FOLDER_HUES = ["#d97757","#5a82c9","#8a6fbf","#4c9e6b","#c4843a","#b84a6b","#3fa89a","#8a8f3d"];
+// Folders get their own, deeper palette rather than NOTE_COLORS: a folder's
+// colour is drawn as an icon, a stripe and a dot on the panel, where the
+// pastel note colours (Paper, Yellow) would all but vanish. New folders are
+// dealt FOLDER_HUES in order; the drawer's "Change color…" offers the same
+// list by name (issue #55).
+const FOLDER_COLORS = [
+  { hue: "#d97757", name: "Coral" },
+  { hue: "#5a82c9", name: "Blue" },
+  { hue: "#8a6fbf", name: "Purple" },
+  { hue: "#4c9e6b", name: "Green" },
+  { hue: "#c4843a", name: "Amber" },
+  { hue: "#b84a6b", name: "Rose" },
+  { hue: "#3fa89a", name: "Teal" },
+  { hue: "#8a8f3d", name: "Olive" },
+];
+const FOLDER_HUES = FOLDER_COLORS.map(c => c.hue);
 
 /* ---------- SEED DATA ----------
  * Folder tree; each folder has its own notes with x/y positions.
@@ -1681,4 +1696,4 @@ function downloadUrlForPlatform(version) {
 }
 const MOBILE_BANNER_DISMISSED_KEY = 'stickies.mobileBannerDismissed';
 const MOBILE_BANNER_MAX_WIDTH = 640;
-Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });
+Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_COLORS, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });

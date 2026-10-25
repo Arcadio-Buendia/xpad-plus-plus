@@ -33,7 +33,7 @@ This is that app. It runs on **Linux, macOS, and in the browser**.
 
 ![Workspace overview](readme-assets/01-hero.png)
 
-**Folders that aren't an afterthought.** Colored folder badges, per-folder note counts, and a drawer that actually gets out of the way when you want it to.
+**Folders that aren't an afterthought.** Colored folder badges (right-click a folder to change its color), per-folder note counts, and a drawer that actually gets out of the way when you want it to.
 
 **Three looks — because a 2pm notes session and a 2am notes session are not the same notes session.**
 
