@@ -1326,6 +1326,18 @@ function zoomViewAt(view, factor, ax, ay) {
   return { x: ax - (ax - view.x) * ratio, y: ay - (ay - view.y) * ratio, z: nz };
 }
 
+// A two-finger touch gesture as one absolute transform of its START view
+// (issue #41): scale by the finger-spread ratio about the start midpoint
+// `from`, then carry that point to the current midpoint `to` (both
+// desk-relative screen points). The world point that was between the
+// fingers stays between them wherever they travel, so the canvas pans and
+// zooms at once, the way a map does. With factor 1 it is a pure pan; at a
+// clamp boundary the zoom stops but the pan keeps following the fingers.
+function pinchView(view, factor, from, to) {
+  const v = zoomViewAt(view, factor, from.x, from.y);
+  return { x: v.x + (to.x - from.x), y: v.y + (to.y - from.y), z: v.z };
+}
+
 // Is this element a text-entry surface that owns its own keystrokes?
 // Mirrors the activeElement gate on the global Ctrl+Z handler in app.jsx.
 function isTextEntryElement(el) {
@@ -1570,4 +1582,4 @@ function downloadUrlForPlatform(version) {
 }
 const MOBILE_BANNER_DISMISSED_KEY = 'stickies.mobileBannerDismissed';
 const MOBILE_BANNER_MAX_WIDTH = 640;
-Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, renderedWordAt, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });
+Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });

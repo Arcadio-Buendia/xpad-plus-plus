@@ -689,9 +689,10 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
   const pinchRef = useRef(null);
   const deskRef = useRef(null);
 
-  // Narrow-viewport detection for touch-pan on the canvas. Matches the
-  // threshold used by MobileDemoBanner and the other mobile gates so that
-  // Electron and desktop browsers are never affected.
+  // Narrow-viewport detection for the desk's touch-action (see the desk's
+  // style below). Matches the threshold used by MobileDemoBanner and the
+  // other mobile gates so that Electron and desktop browsers are never
+  // affected.
   const [narrow, setNarrow] = useState(
     () => typeof window !== 'undefined' && !window.stickyAPI
       && window.innerWidth <= MOBILE_BANNER_MAX_WIDTH
@@ -769,13 +770,15 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
 
   // Touch gestures on the canvas. Two branches with different gates:
   //
-  // 1-finger pan — mobile-only (narrow viewport, web demo) and only on the
-  // canvas background. Gated so desktop browsers and Electron are entirely
-  // unaffected: a single-finger touch on desktop must keep behaving like the
-  // synthesised mouse events (marquee, note taps). Mirrors the "empty-canvas"
-  // target filter used by the mouse marquee branch so a touch that lands on
-  // a sticky note is passed through untouched (the note's own drag logic
-  // owns that gesture). Strictly additive to onMouseDown.
+  // 1-finger pan — works everywhere (#41; it used to be gated to the narrow
+  // web demo, which left a one-finger drag in the desktop app to the
+  // browser's own scroll of a desk that can't scroll, so nothing happened),
+  // but only on the canvas background. Mirrors the "empty-canvas" target
+  // filter used by the mouse marquee branch so a touch that lands on a
+  // sticky note is passed through untouched (the note's own drag logic owns
+  // that gesture). A drag never produced a marquee on touch — Chromium
+  // synthesises mouse events for taps only — and a tap still does exactly
+  // what it did: its synthesised click clears the selection.
   //
   // 2-finger pinch — works everywhere (Electron touchscreens, wide desktop
   // browsers, and the narrow mobile demo alike; issue #17) but ONLY when
@@ -795,7 +798,6 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
   // pan-touchmove effect short-circuits (panning is false), and vice versa.
   const onTouchStart = (e) => {
     if (e.touches.length === 1) {
-      if (!narrow) return;
       if (!(e.target.id==='desk' || e.target.id==='desk-inner' || e.target.id==='desk-grid')) return;
       const t = e.touches[0];
       setPanning(true);
@@ -825,7 +827,7 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
       // midpoint in screen (desk-relative) coords at pinch start
       const mx0 = ((t0.clientX + t1.clientX) / 2) - rect.left;
       const my0 = ((t0.clientY + t1.clientY) / 2) - rect.top;
-      pinchRef.current = { d0, z0: view.z, vx0: view.x, vy0: view.y, mx0, my0 };
+      pinchRef.current = { d0, z0: view.z, vx0: view.x, vy0: view.y, mx0, my0, left: rect.left, top: rect.top };
       setPinching(true);
       // If a 1-finger pan was in progress (user dropped a second finger
       // mid-drag), cancel it so the pan touchmove handler doesn't fight
@@ -876,13 +878,32 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
     };
   }, [panning]);
 
+  // Claim canvas touch gestures from their very first touchmove (#41). The
+  // pan and pinch effects attach their {passive:false} listeners one React
+  // commit after touchstart, but a touchscreen's first moves reach the
+  // browser a millisecond or two after the finger lands, before any such
+  // listener exists. Uncancelable, they let the browser take the drag as a
+  // native scroll under the desk's pan-x pan-y touch-action (pointercancel,
+  // and every later touchmove of the gesture uncancelable too). Registered
+  // at mount, this listener makes the desk a blocking touch target before
+  // any finger lands; it cancels only while onTouchStart has armed a pan or
+  // pinch (synchronously, through the refs), so touch-scrolling a note body
+  // is left alone.
+  useEffect(() => {
+    const desk = deskRef.current;
+    if (!desk) return;
+    const claim = (e) => { if (panRef.current || pinchRef.current) e.preventDefault(); };
+    desk.addEventListener('touchmove', claim, { passive: false });
+    return () => desk.removeEventListener('touchmove', claim, { passive: false });
+  }, []);
+
   // Two-finger pinch-to-zoom on the canvas (all platforms). Mirrors the pan
   // effect's structure (window-scoped {passive:false} listeners for the
   // duration of the gesture) but operates on pinchRef instead of panRef.
-  // Zoom is anchored at the pinch midpoint so the world point beneath the
-  // midpoint stays put, matching the wheel-zoom feel. When the finger count
-  // drops below 2 the gesture ends; we do not transition into a pan — a
-  // fresh touchstart is required for that.
+  // The world point beneath the fingers' midpoint follows the midpoint, so
+  // one gesture pans and zooms at once, like a map (#41). When the finger
+  // count drops below 2 the gesture ends; we do not transition into a pan —
+  // a fresh touchstart is required for that.
   useEffect(() => {
     if (!pinching) return;
     const move = (e) => {
@@ -894,12 +915,14 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
       const dy = t1.clientY - t0.clientY;
       const d = Math.hypot(dx, dy);
       if (d === 0) return;
-      // Midpoint-preserving pan: the shared anchored-zoom formula, but
-      // applied to the pinch-START view (z0, vx0, vy0) and anchored at the
-      // pinch-start midpoint (mx0, my0), so the midpoint's world coordinate
-      // stays fixed under the midpoint's screen coordinate for the whole
-      // gesture (the whole pinch is one absolute transform, not increments).
-      setView(() => zoomViewAt({ x: p.vx0, y: p.vy0, z: p.z0 }, d / p.d0, p.mx0, p.my0));
+      // Pan and zoom at once (#41): the pinch-START view (z0, vx0, vy0) is
+      // scaled about the start midpoint (mx0, my0) and that point is carried
+      // to the CURRENT midpoint, so the world point that began between the
+      // fingers stays between them wherever they travel (the whole gesture
+      // is one absolute transform, not increments).
+      const mx = (t0.clientX + t1.clientX) / 2 - p.left;
+      const my = (t0.clientY + t1.clientY) / 2 - p.top;
+      setView(() => pinchView({ x: p.vx0, y: p.vy0, z: p.z0 }, d / p.d0, { x: p.mx0, y: p.my0 }, { x: mx, y: my }));
     };
     const end = (e) => {
       // End as soon as fewer than 2 fingers remain. Do NOT promote the

@@ -11,7 +11,7 @@ const code = fs.readFileSync(path.join(dir, '..', 'utils.jsx'), 'utf8');
 const sandbox = { React: {}, window: {}, document: {}, navigator: {}, console, Math, JSON, Date };
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { zoomActionForKey, zoomViewAt, ZOOM_MIN, ZOOM_MAX } = sandbox.window;
+const { zoomActionForKey, zoomViewAt, pinchView, ZOOM_MIN, ZOOM_MAX } = sandbox.window;
 
 /* ==================================================================== */
 /* zoomActionForKey — which canvas zoom a keydown asks for (issue #45)   */
@@ -129,4 +129,52 @@ test('the input view object is not mutated', () => {
   const v = { x: 10, y: 20, z: 1 };
   zoomViewAt(v, 1.5, 300, 300);
   assert.deepEqual(v, { x: 10, y: 20, z: 1 });
+});
+
+/* ==================================================================== */
+/* pinchView — two fingers pan and zoom at once (issue #41)              */
+/* ==================================================================== */
+
+test('the world point between the fingers at the start stays between them as they travel', () => {
+  for (const v of [{ x: 0, y: 0, z: 1 }, { x: -120, y: 65, z: 0.8 }, { x: 300, y: -40, z: 2 }]) {
+    for (const factor of [1, 1.5, 0.6]) {
+      for (const [from, to] of [
+        [{ x: 700, y: 450 }, { x: 650, y: 300 }],
+        [{ x: 100, y: 800 }, { x: 900, y: 120 }],
+        [{ x: 400, y: 400 }, { x: 400, y: 400 }],
+      ]) {
+        const before = worldAt(v, from.x, from.y);
+        const out = pinchView(v, factor, from, to);
+        const after = worldAt(out, to.x, to.y);
+        assert.ok(close(before.x, after.x) && close(before.y, after.y),
+          `x${factor} from (${from.x},${from.y}) to (${to.x},${to.y}) lost the point under the fingers`);
+        assert.ok(close(out.z, v.z * factor), 'the finger spread ratio sets the scale');
+      }
+    }
+  }
+});
+
+test('fingers moving together without spreading pan by exactly the midpoint delta', () => {
+  const out = pinchView({ x: 40, y: -10, z: 1.3 }, 1, { x: 500, y: 400 }, { x: 350, y: 320 });
+  assert.ok(close(out.x, 40 - 150) && close(out.y, -10 - 80));
+  assert.equal(out.z, 1.3);
+});
+
+test('past the zoom clamp the scale stops but the pan keeps following the fingers', () => {
+  const ceil = { x: 33, y: -70, z: ZOOM_MAX };
+  assert.deepEqual(plain(pinchView(ceil, 1.5, { x: 700, y: 450 }, { x: 640, y: 500 })),
+    { x: 33 - 60, y: -70 + 50, z: ZOOM_MAX });
+  const floor = { x: 33, y: -70, z: ZOOM_MIN };
+  assert.deepEqual(plain(pinchView(floor, 0.5, { x: 700, y: 450 }, { x: 720, y: 430 })),
+    { x: 33 + 20, y: -70 - 20, z: ZOOM_MIN });
+});
+
+test('pinchView does not mutate its inputs', () => {
+  const v = { x: 10, y: 20, z: 1 };
+  const from = { x: 100, y: 100 };
+  const to = { x: 150, y: 90 };
+  pinchView(v, 1.5, from, to);
+  assert.deepEqual(v, { x: 10, y: 20, z: 1 });
+  assert.deepEqual(from, { x: 100, y: 100 });
+  assert.deepEqual(to, { x: 150, y: 90 });
 });
