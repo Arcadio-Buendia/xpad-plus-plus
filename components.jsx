@@ -707,9 +707,15 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
   // space bar toggles pan mode
   useEffect(() => {
     const down = (e) => {
-      if (e.code==='Space' && !e.repeat && !e.target.matches('input, textarea, [contenteditable]')) {
+      if (e.code==='Space' && !e.target.matches('input, textarea, [contenteditable]')) {
+        // Claim every keydown of a held Space, not just the first. The OS
+        // auto-repeat keeps sending more (e.repeat) until the key comes up,
+        // and each one left to the browser does Space's default: it arms the
+        // focused button, so the keyup clicks it (releasing Space after a pan
+        // re-fired the last clicked toolbar button, #54), or it scrolls the
+        // note body last clicked by a page.
         e.preventDefault();
-        setSpaceHeld(true);
+        if (!e.repeat) setSpaceHeld(true);
       }
     };
     const up = (e) => { if (e.code==='Space') setSpaceHeld(false); };

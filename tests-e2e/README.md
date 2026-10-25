@@ -126,6 +126,16 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   Dark. On a real desktop that media feature is driven by the settings
   portal (`org.freedesktop.appearance color-scheme`), which needs a human
   flipping the desktop's dark-style switch to see end to end.
+- `space-pan.e2e.mjs` — Space-to-pan versus the focused control (#54):
+  after clicking fit, a space-drag pan and the Space release leave the view
+  where the pan put it (the button keeps focus and its focus ring); a held
+  Space with no drag clicks nothing; every toolbar, zoom-bar, drawer and
+  note button sits through a pan from bare desk and from a note body
+  without firing; Enter still activates a focused button; Space still types
+  in the editor and the search box; a held Space doesn't scroll the note
+  body last clicked. A held key is sent the way a keyboard sends it — one
+  keyDown, then `autoRepeat: true` keyDowns, then the keyUp. A lone
+  keyDown/keyUp pair never reproduced the bug: only the repeats leaked.
 
 ## Verifying inside the flatpak (pre-release)
 
