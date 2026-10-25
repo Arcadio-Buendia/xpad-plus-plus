@@ -27,6 +27,38 @@ export async function pollUntil(fn, { timeout = 5000, interval = 100, label = 'c
   }
 }
 
+// A second CDP client, on the MAIN process's node inspector (launch with
+// inspectMain:true) — for tests about the BrowserWindow itself, which the
+// page cannot see. `require` comes from the inspector's command-line API.
+async function connectMain(port) {
+  const target = await pollUntil(async () => {
+    try { return (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json())[0] || null; } catch { return null; }
+  }, { timeout: 15000, interval: 200, label: 'main-process inspector' });
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    ws.onopen = resolve;
+    ws.onerror = () => reject(new Error('main-process inspector failed to connect'));
+  });
+  let msgId = 0;
+  const pending = new Map();
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+  };
+  const evalMain = (expression) => new Promise((resolve, reject) => {
+    const id = ++msgId;
+    pending.set(id, (m) => {
+      if (m.error) return reject(new Error(`CDP ${m.error.message || JSON.stringify(m.error)}`));
+      const r = m.result;
+      if (r.exceptionDetails) return reject(new Error(`main evaluate threw: ${r.exceptionDetails.exception?.description || JSON.stringify(r.exceptionDetails)}`));
+      resolve(r.result?.value);
+    });
+    ws.send(JSON.stringify({ id, method: 'Runtime.evaluate',
+      params: { expression, returnByValue: true, awaitPromise: true, includeCommandLineAPI: true } }));
+  });
+  return { evalMain, close: () => { try { if (ws.readyState === 1) ws.close(); } catch {} } };
+}
+
 function freePort() {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
@@ -119,15 +151,20 @@ function defaultSeed() {
  * `files` seeds extra files into the temp userData dir before the app
  * starts (relative path -> Buffer/string), e.g. images/<hash>.png for the
  * sticky-image:// protocol tests — anything the app expects to find on disk
- * at startup, alongside notes.json.
+ * at startup, alongside notes.json. `windowJson` replaces the seeded
+ * window.json; `inspectMain` opens the main process's node inspector and
+ * adds `evalMain` and `quit` to the drivers.
  */
-export async function launch({ seed = defaultSeed(), files = {}, whatsNew = false } = {}) {
+export async function launch({
+  seed = defaultSeed(), files = {}, whatsNew = false,
+  windowJson = { x: 0, y: 0, width: 1400, height: 900 }, inspectMain = false,
+} = {}) {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sticky-e2e-'));
   // seed:null leaves notes.json absent, which is how the app recognises a
   // genuine first install (see main.js app:first-run-sync).
   if (seed) fs.writeFileSync(path.join(userData, 'notes.json'), JSON.stringify(seed, null, 2));
   // Force a known window size so seeded positions are on-screen.
-  fs.writeFileSync(path.join(userData, 'window.json'), JSON.stringify({ x: 0, y: 0, width: 1400, height: 900 }));
+  fs.writeFileSync(path.join(userData, 'window.json'), JSON.stringify(windowJson));
   for (const [rel, data] of Object.entries(files)) {
     const abs = path.join(userData, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -135,9 +172,10 @@ export async function launch({ seed = defaultSeed(), files = {}, whatsNew = fals
   }
 
   const port = await freePort();
+  const mainPort = inspectMain ? await freePort() : null;
   // detached:true puts Electron in its own process group so close() can kill
   // the whole tree (gpu/renderer children) via the tracked child PID only.
-  const child = spawn(ELECTRON, ['.', `--remote-debugging-port=${port}`], {
+  const child = spawn(ELECTRON, [...(mainPort ? [`--inspect=${mainPort}`] : []), '.', `--remote-debugging-port=${port}`], {
     cwd: APP_ROOT,
     env: { ...process.env, STICKY_USER_DATA: userData },
     stdio: 'ignore',
@@ -150,8 +188,10 @@ export async function launch({ seed = defaultSeed(), files = {}, whatsNew = fals
   process.on('exit', emergency);
 
   let ws = null;
+  let main = null;
   const close = async () => {
     try { if (ws && ws.readyState === 1) ws.close(); } catch {}
+    if (main) main.close();
     killTree('SIGTERM');
     try {
       await pollUntil(() => exited, { timeout: 3000, interval: 50, label: 'electron exit' });
@@ -312,7 +352,22 @@ export async function launch({ seed = defaultSeed(), files = {}, whatsNew = fals
       await hydrated();
     }
 
-    return { cmd, evaljs, click, dblclick, drag, type, press, focusWindow, noteBodyRect, screenshot, pollUntil, sleep, userData, close };
+    // Main process (inspectMain only). quit() closes the window the way the
+    // user does, so the app's own shutdown runs — window.json is written in
+    // the window's 'close' handler — and waits for Electron to exit; the
+    // userData dir stays until close().
+    if (mainPort) main = await connectMain(mainPort);
+    const evalMain = (expr) => {
+      if (!main) throw new Error('launch({ inspectMain: true }) to use evalMain');
+      return main.evalMain(expr);
+    };
+    const quit = async () => {
+      await evalMain(`require('electron').BrowserWindow.getAllWindows()[0].close(), 1`);
+      main.close();
+      await pollUntil(() => exited, { timeout: 10000, interval: 50, label: 'electron to quit' });
+    };
+
+    return { cmd, evaljs, evalMain, quit, click, dblclick, drag, type, press, focusWindow, noteBodyRect, screenshot, pollUntil, sleep, userData, close };
   } catch (err) {
     await close();
     throw err;

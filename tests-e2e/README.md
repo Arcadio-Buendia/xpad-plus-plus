@@ -23,8 +23,9 @@ isn't worth the flake risk for this project).
    `notes.json` (the app's whole persisted store: `{ tweaks, folders, notes,
    links, cwd, view, drawer, folderOrder }`; notes carry
    `id/folder/title/body/color/x/y/w/h/z/pinned` in world coordinates), a
-   `window.json` forcing a known 1400x900 window, and any extra `files`
-   the test seeds (e.g. `images/<hash>.png` for the sticky-image tests);
+   `window.json` forcing a known 1400x900 window (`windowJson` replaces
+   it), and any extra `files` the test seeds (e.g. `images/<hash>.png` for
+   the sticky-image tests);
 2. launches `./node_modules/.bin/electron . --remote-debugging-port=<free port>`
    with `STICKY_USER_DATA` pointing at that temp dir;
 3. polls `http://127.0.0.1:<port>/json` until the page target appears,
@@ -36,7 +37,12 @@ isn't worth the flake risk for this project).
    `focusWindow` (Page.bringToFront + wait for `document.hasFocus()` —
    required before any menu accelerator, which the browser process only
    dispatches to the active window), `noteBodyRect`, `screenshot`, and
-   `close`.
+   `close`. With `inspectMain: true` Electron also gets `--inspect=<free
+   port>`, and two more drivers reach the main process: `evalMain`
+   (Runtime.evaluate on the node inspector, `require` available) and
+   `quit` (closes the window the way the user does, so the app's own
+   shutdown runs, and waits for Electron to exit; `userData` stays until
+   `close()`).
 
 `close()` runs in an `after` hook even on failure: it kills only the
 Electron process group it spawned (tracked child PID — never a pkill) and
@@ -160,6 +166,15 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   the `theme-color` the installed window paints its title bar with follows
   the theme. Chrome's install UI is out of reach from here — see the last
   section.
+- `window-state.e2e.mjs` — `window.json` across launches (#62): quitting in
+  full screen saves the normal size plus a `fullScreen` flag, such a file
+  reopens full screen and leaving it gives the saved size back, and a file
+  2.2.1 wrote while maximized (the maximized size, no flag) gets a real,
+  smaller normal size. Xvfb has no window manager, so `maximize()` is a
+  no-op there and the maximized round trip — and what the compositor makes
+  of it, which is what #62 was about — is a manual check on a real desktop:
+  maximize, quit, reopen; it must come back maximized, edge to edge, title
+  bar below the top bar, and un-maximize to the size it had before.
 
 ## Verifying inside the flatpak (pre-release)
 

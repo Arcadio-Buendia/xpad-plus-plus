@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, ipcMain, Menu, dialog, net, protocol, shell } = require('electron');
+const { app, BrowserWindow, clipboard, ipcMain, Menu, dialog, net, protocol, screen, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
@@ -8,6 +8,7 @@ const {
   referencedImageNames, readImages, collectImages, writeImages,
   CLIPBOARD_IMAGE_BUDGET,
 } = require('./storage.js');
+const { windowStateOf, restoreWindowState } = require('./window-state.js');
 
 // E2E test hook: when STICKY_USER_DATA is set, store all app data (notes.json,
 // window.json, the Chromium profile) under that directory instead of the real
@@ -80,21 +81,23 @@ let mainWindow = null;
 let pendingSave = null;
 let isQuitting  = false;
 
-function loadBounds() {
+// window.json: the window's normal bounds plus maximized / fullScreen flags
+// (window-state.js). Missing or unreadable means null — the default size.
+function loadWindowState() {
   try {
     if (fs.existsSync(windowPath())) {
       return JSON.parse(fs.readFileSync(windowPath(), 'utf8'));
     }
   } catch {}
-  return { width: 1920, height: 1080 };
+  return null;
 }
 
-function saveBounds(b) {
+function saveWindowState(state) {
   try {
     fs.mkdirSync(path.dirname(windowPath()), { recursive: true });
-    fs.writeFileSync(windowPath(), JSON.stringify(b));
+    fs.writeFileSync(windowPath(), JSON.stringify(state));
   } catch (err) {
-    console.warn('[main] failed to save window bounds:', err.message);
+    console.warn('[main] failed to save window state:', err.message);
   }
 }
 
@@ -106,12 +109,14 @@ function saveBounds(b) {
 const HIDE_MENU_BAR = process.platform !== 'darwin';
 
 function createWindow() {
-  const bounds = loadBounds();
+  const state = restoreWindowState(loadWindowState(), {
+    workAreas: screen.getAllDisplays().map((d) => d.workArea),
+    primary: screen.getPrimaryDisplay().workArea,
+  });
   mainWindow = new BrowserWindow({
-    width:  bounds.width  ?? 1920,
-    height: bounds.height ?? 1080,
-    x: bounds.x,
-    y: bounds.y,
+    ...state.bounds,
+    // Shown below, once it is in its restored state.
+    show: false,
     minWidth:  800,
     minHeight: 600,
     backgroundColor: '#14181d',
@@ -131,6 +136,12 @@ function createWindow() {
   // autoHideMenuBar alone leaves the bar showing on some window managers
   // until the first Alt; this starts it hidden everywhere.
   if (HIDE_MENU_BAR) mainWindow.setMenuBarVisibility(false);
+
+  // Maximize / go full screen before the first show, so the window maps
+  // straight into that state instead of flashing up as a plain window first.
+  if (state.fullScreen) mainWindow.setFullScreen(true);
+  else if (state.maximized) mainWindow.maximize();
+  mainWindow.show();
 
   // The user can pin the bar open from Preferences; the renderer tells us
   // whenever that preference loads or changes. macOS has no in-window bar.
@@ -155,7 +166,7 @@ function createWindow() {
   });
 
   mainWindow.on('close', () => {
-    if (mainWindow) saveBounds(mainWindow.getBounds());
+    if (mainWindow) saveWindowState(windowStateOf(mainWindow));
   });
 
   mainWindow.on('closed', () => { mainWindow = null; });

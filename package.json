@@ -28,6 +28,7 @@
       "main.js",
       "preload.js",
       "storage.js",
+      "window-state.js",
       "index.html",
       "app.jsx",
       "components.jsx",
