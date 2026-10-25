@@ -95,6 +95,19 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   the file → Ctrl+V round trip puts the picture back on disk. That last one
   uses the REAL system clipboard (nothing else can test that path), so a
   run replaces whatever you had copied.
+- `note-paste.e2e.mjs` — the note context menu's "Paste" (#59), right
+  after "Copy": greyed out while the clipboard holds nothing; text pasted
+  into a note nobody is editing goes at the end on its own line, and one
+  Ctrl+Z takes it back; pasted while editing (menu opened from the header,
+  which closes the editor first) it replaces the selection, the editor is
+  open again with the caret after it, and the editor's own Ctrl+Z undoes
+  it; 20 lines pasted deep in a long note leave the caret in view (the
+  execCommand insert, unlike a keyboard paste, doesn't scroll to it on its
+  own); a URL pasted over a selected word becomes a link, as with Ctrl+V; a
+  picture is stored under `<userData>/images/` and referenced; copied
+  notes paste as new notes (one Ctrl+Z removes them), not as text in the
+  body. Uses the REAL system clipboard, so a run replaces whatever you had
+  copied.
 - `editing.e2e.mjs` — editor keystrokes against the real textarea: Enter
   continues ordered lists ("1. x" → "2. "), Tab renumbers-to-1 while
   nesting ("2. y" → "   1. y"), Enter continues blockquotes ("> q" → "> "),

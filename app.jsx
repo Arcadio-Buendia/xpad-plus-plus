@@ -367,9 +367,13 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
     }
   };
 
-  const pasteFromClipboard = async () => {
+  // `given` is clipboard text a caller has already read — a note's
+  // context-menu "Paste" (#59) reads it in the main process and hands the
+  // app's copied-notes payloads over here.
+  const pasteFromClipboard = async (given) => {
     let text = '';
-    try { text = await navigator.clipboard.readText(); } catch { return; }
+    if (typeof given === 'string') text = given;
+    else try { text = await navigator.clipboard.readText(); } catch { return; }
     if (!text) return;  // empty clipboard — silent (no intent)
     // Plain text with no sticky-notes marker anywhere is not a failed
     // import — it's text. Make a note out of it where the user is looking
@@ -776,6 +780,7 @@ function AppInner({ store, setKey, exportNow, importNow, takeSnapshot, undo, red
         onCreateNote={createNote}
         onImportMarkdown={importMarkdown}
         onCopyNotes={copySelected}
+        onPasteNotes={pasteFromClipboard}
         view={store.view}
         setView={(v) => setKey('view', v)}
         drawerOpen={store.drawer}

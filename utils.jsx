@@ -734,6 +734,13 @@ function editLinkOnPaste(value, selStart, selEnd, pasted) {
   else text = `[${sel}](${url})`;
   return { start: selStart, end: selEnd, text, caret: selStart + text.length };
 }
+// Every text paste into the editor, Ctrl+V or the context menu's "Paste"
+// (#59): the link wrap first, then the blockquote spread. null means a
+// plain insert of the pasted text.
+function editOnPaste(value, selStart, selEnd, pasted) {
+  return editLinkOnPaste(value, selStart, selEnd, pasted)
+    || editQuoteOnPaste(value, selStart, selEnd, pasted);
+}
 
 // Open a note's web link outside the app: default browser under Electron
 // (http/https re-checked in the main process), new tab in the web demo.
@@ -1670,6 +1677,28 @@ function canvasPasteAction(text) {
   return text.includes(STICKY_CLIPBOARD_MARKER) ? 'error' : 'note';
 }
 
+// A note's context-menu "Paste" (#59): which of the app's own Ctrl+V paths
+// does what's on the clipboard ({ text, image }) take?
+//   'image' — a picture: stored and referenced in the note, as Ctrl+V in
+//             the editor does (it wins over text, there too)
+//   'notes' — the app's copied notes, or a broken payload: the canvas
+//             paste, as Ctrl+V on the desk — new notes, or its error toast
+//   'text'  — anything else: into the note
+//   'none'  — nothing to paste: the item is greyed out
+function notePasteAction(clip) {
+  if (!clip) return 'none';
+  if (clip.image) return 'image';
+  const action = canvasPasteAction(clip.text || '');
+  if (action === 'ignore') return 'none';
+  return action === 'note' ? 'text' : 'notes';
+}
+
+// Where a paste goes into a note nobody is editing: at the end, on a line
+// of its own — where "Insert image…" puts a picture with no caret to aim at.
+function appendOnOwnLine(body, text) {
+  return body ? body + (body.endsWith('\n') ? '' : '\n') + text : text;
+}
+
 function cmpSemver(a, b) {
   const pa = a.split('.').map(n => parseInt(n, 10) || 0);
   const pb = b.split('.').map(n => parseInt(n, 10) || 0);
@@ -1696,4 +1725,4 @@ function downloadUrlForPlatform(version) {
 }
 const MOBILE_BANNER_DISMISSED_KEY = 'stickies.mobileBannerDismissed';
 const MOBILE_BANNER_MAX_WIDTH = 640;
-Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_COLORS, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });
+Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_COLORS, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, appendOnOwnLine, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editOnPaste, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notePasteAction, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });

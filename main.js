@@ -283,6 +283,21 @@ ipcMain.handle('images:save-clipboard', async () => {
   }
 });
 
+// What is on the clipboard, for a note's context-menu "Paste" (#59): asked
+// when the menu opens (an empty clipboard greys the item out) and again on
+// the click. Read here, like the image above, so the menu never leans on the
+// renderer's clipboard access — that is what broke image pasting inside the
+// flatpak sandbox. `image` only says a picture is there (availableFormats, no
+// decoding on every right-click); images:save-clipboard reads and stores it.
+ipcMain.handle('clipboard:read', async () => {
+  try {
+    const image = clipboard.availableFormats().some(f => /^image\//.test(f));
+    return { ok: true, text: clipboard.readText(), image };
+  } catch (err) {
+    return { ok: false, text: '', image: false, error: err.message };
+  }
+});
+
 // The one place a picture that lives on disk gets stored, shared by the two
 // file routes below. Reading happens here, in main, because that is where
 // the flatpak portals' file access lands: a path handed over by a drag-and-

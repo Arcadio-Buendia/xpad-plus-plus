@@ -671,7 +671,7 @@ function KeyHint({T, keys, label}) {
 function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNotes, noteRefs, linkLines,
   links, addLink, removeLink, linksFor,
   updateNote, bringToFront, bringGroupToFront, focusNote, onDeleteNote, selectedIds, setSelectedIds, setNotes,
-  jumpToNote, moveNoteToFolder, moveNotesToFolder, onCreateNote, onImportMarkdown, onCopyNotes,
+  jumpToNote, moveNoteToFolder, moveNotesToFolder, onCreateNote, onImportMarkdown, onCopyNotes, onPasteNotes,
   view, setView, drawerOpen, takeSnapshot}) {
 
   // Tree-ordered folder list (with depth) for the per-note "Move to folder"
@@ -1295,6 +1295,7 @@ function Desktop({T, tweaks, currentFolder, folders, folderOrder, notes, allNote
             linksFor={linksFor}
             onMoveNotesToFolder={moveNotesToFolder}
             onCopy={()=>onCopyNotes && onCopyNotes(n.id)}
+            onPasteNotes={onPasteNotes}
             onAddLink={(toId)=>addLink(n.id, toId)}
             onStartLink={()=>setLinkingFrom({id:n.id, x:n.x+n.w/2, y:n.y+n.h/2})}
             onJumpToNote={jumpToNote}
@@ -1472,7 +1473,7 @@ function startPointerDrag(e, onMove, onEnd) {
 function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setSelectedIds, setNotes,
   bringGroupToFront,
   onFocus, onChange, onTogglePin, onDelete, onLinkClick, childFolders, onMoveToFolder, onMoveNotesToFolder, zoom=1,
-  allNotes=[], linksFor, onAddLink, onStartLink, onJumpToNote, onCopy, onSnapshot}) {
+  allNotes=[], linksFor, onAddLink, onStartLink, onJumpToNote, onCopy, onPasteNotes, onSnapshot}) {
   const zRef = useRef(zoom); zRef.current = zoom;
   const [editing, setEditing] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -1640,6 +1641,99 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
         else if (res && !res.canceled) console.warn('[insert-image]', res.error);
       })
       .catch(err => console.warn('[insert-image]', err));
+  };
+
+  /* ---------- Context-menu "Paste" (#59) ----------
+   * Takes whichever of the two Ctrl+V paths fits what the clipboard holds
+   * (notePasteAction): the app's copied notes paste onto the canvas, as
+   * Ctrl+V on the desk does; text and pictures go into this note, as Ctrl+V
+   * in the editor does — same picture store, same smart text edits. The
+   * clipboard is read in the main process, straight off the OS clipboard,
+   * so nothing here leans on the renderer's clipboard access — which is what
+   * broke image pasting inside the flatpak sandbox. The web demo has no main
+   * process: it reads text through navigator.clipboard, on the click, and
+   * has nowhere to store a picture — the same as its Ctrl+V.
+   *
+   * Where it lands: if the editor was open when the menu opened, at its
+   * selection, replacing it. Clicking the menu has closed the editor by
+   * then, so it is reopened there and the text goes in through execCommand
+   * — a keyboard paste in every respect, native undo included. Otherwise
+   * nobody can see a caret to aim at, so the end of the body, on a line of
+   * its own, as one undo step: where "Insert image…" puts a picture then.
+   */
+  const editorSelection = () => {
+    const ta = taRef.current;
+    return ta ? { start: ta.selectionStart, end: ta.selectionEnd, scrollTop: ta.scrollTop, body: ta.value } : null;
+  };
+  // Taken on every press, before it can move focus: right-clicking the
+  // header or footer blurs the textarea, which ends edit mode before the
+  // contextmenu event arrives.
+  const pressSelectionRef = useRef(null);
+
+  const openMenu = (x, y) => {
+    const selection = editorSelection() || pressSelectionRef.current;
+    pressSelectionRef.current = null;
+    setMenu({ x, y, selection, paste: null });
+    // Grey "Paste" out when there is nothing to paste. Electron only — the
+    // web demo can't look without a permission prompt, so its item stays on.
+    const api = window.stickyAPI;
+    if (api && api.readClipboard) {
+      api.readClipboard()
+        .then(clip => { const paste = notePasteAction(clip); setMenu(m => m && { ...m, paste }); })
+        .catch(err => console.warn('[paste]', err));
+    }
+  };
+
+  const pasteFromMenu = async (selection) => {
+    const api = window.stickyAPI;
+    let clip;
+    try {
+      clip = api && api.readClipboard
+        ? await api.readClipboard()
+        : { text: await navigator.clipboard.readText(), image: false };
+    } catch (err) {
+      console.warn('[paste]', err);
+      return;
+    }
+    const action = notePasteAction(clip);
+    if (action === 'notes') { onPasteNotes && onPasteNotes(clip.text); return; }
+    let text;
+    if (action === 'image') {
+      let res = null;
+      try { res = await api.saveClipboardImage(); } catch (err) { res = { error: err }; }
+      if (!res || !res.ok) { console.warn('[paste-image]', res && res.error); return; }
+      text = `![](${res.ref})`;
+    } else if (action === 'text') {
+      text = clip.text.replace(/\r\n?/g, '\n');
+    } else {
+      return;
+    }
+    if (selection && selection.body === (bodyRef.current || '')) {
+      // Reopen it looking where the user left it — the caret and scroll
+      // restore a double-click opens with — then paste.
+      pendingCaretRef.current = selection.start;
+      pendingScrollRef.current = selection.scrollTop;
+      ReactDOM.flushSync(() => setEditing(true));
+      const ta = taRef.current;
+      if (ta) {
+        const edit = (action === 'text' && editOnPaste(ta.value, selection.start, selection.end, text))
+          || { start: selection.start, end: selection.end, text };
+        ta.focus();
+        ta.setSelectionRange(edit.start, edit.end);
+        document.execCommand('insertText', false, edit.text);
+        // A keyboard paste scrolls to the caret; execCommand doesn't, and
+        // after a long paste it can sit out of view. Same check as opening
+        // at a caret (the layout effect below).
+        const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+        const caretTop = ta.value.slice(0, ta.selectionEnd).split('\n').length * lineHeight;
+        if (caretTop < ta.scrollTop || caretTop > ta.scrollTop + ta.clientHeight) {
+          ta.scrollTop = Math.max(0, caretTop - ta.clientHeight / 2);
+        }
+        return;
+      }
+    }
+    onSnapshot && onSnapshot();
+    onChange({ body: appendOnOwnLine(bodyRef.current || '', text) });
   };
 
   // Mermaid diagrams (issue #31): mdToHtml renders ```mermaid fences as
@@ -1863,7 +1957,8 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
     // the folder under the pointer at release via folderIdUnder.
     <div ref={el} data-note="1" data-note-id={note.id}
       onMouseDown={onFocus}
-      onContextMenu={e=>{e.preventDefault(); e.stopPropagation(); setMenu({x:e.clientX, y:e.clientY});}}
+      onPointerDownCapture={()=>{ pressSelectionRef.current = editorSelection(); }}
+      onContextMenu={e=>{e.preventDefault(); e.stopPropagation(); openMenu(e.clientX, e.clientY);}}
       // Dropping picture files anywhere on the note (header, body, footer)
       // inserts them — see onDropFiles. Claiming the dragover is what makes
       // the drop event fire at all, so only do it for drags that carry
@@ -2135,8 +2230,7 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
               // below (native undo + React onChange keep working); null from
               // both means fall through to the default paste.
               const pasted = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
-              const edit = editLinkOnPaste(ta.value, ta.selectionStart, ta.selectionEnd, pasted)
-                || editQuoteOnPaste(ta.value, ta.selectionStart, ta.selectionEnd, pasted);
+              const edit = editOnPaste(ta.value, ta.selectionStart, ta.selectionEnd, pasted);
               if (!edit) return;
               e.preventDefault();
               ta.setSelectionRange(edit.start, edit.end);
@@ -2234,6 +2328,7 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
             {label: (selected && selectedIds && selectedIds.size > 1)
               ? 'Copy ' + selectedIds.size + ' notes'
               : 'Copy', onClick: () => onCopy && onCopy()},
+            {label:'Paste', disabled: menu.paste === 'none', onClick: () => pasteFromMenu(menu.selection)},
             {label:'Download', onClick:()=>downloadNoteAsMarkdown(note)},
             {divider:true},
             {label:'Edit title', onClick:()=>setEditingTitle(true)},

@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('stickyAPI', {
   // Save the clipboard's image without touching the renderer's File object,
   // which is unreadable in the flatpak sandbox. Preferred paste path.
   saveClipboardImage: () => ipcRenderer.invoke('images:save-clipboard'),
+  // A note's context-menu "Paste" (#59): what the clipboard holds, read in
+  // main — { text, image }, image being true when a picture is there to
+  // store with saveClipboardImage.
+  readClipboard: () => ipcRenderer.invoke('clipboard:read'),
   // Store an image FILE by path: main reads it and returns { ok, ref }.
   // Preferred route for a file dropped on a note — under flatpak the path
   // is the document-portal one the drop was rewritten to, which main may
