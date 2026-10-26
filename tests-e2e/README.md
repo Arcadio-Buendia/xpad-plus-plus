@@ -67,8 +67,9 @@ can never touch real user notes. Unset, the app behaves exactly as before.
 
 - `markdown-render.e2e.mjs` — rendered `.md-body` DOM: heading shift
   (###→h5, ####→h6), `ol > li` + nested ol, blockquote, table, `pre > code`
-  fences, `javascript:` links stay inert text, bare `www.` URLs linkify.
-  Then the markdown *import* (issue #44): the desk context menu offers
+  fences, `javascript:` links stay inert text, bare `www.` URLs linkify; the
+  editor wraps at exactly the preview's width (no body-box scrollbar while
+  editing). Then the markdown *import* (issue #44): the desk context menu offers
   "Import markdown file…" next to "New note here", and handing the canvas's
   `onImportMarkdown` the payload the main process returns for two chosen
   files makes one note per file — filename as the title, contents as the

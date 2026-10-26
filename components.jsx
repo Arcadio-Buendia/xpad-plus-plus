@@ -2278,6 +2278,12 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
               // the raw text sits exactly where the rendered preview draws it
               // (issue #26 — preview identical to edit mode).
               padding:0, margin:0,
+              // A textarea is inline-block: at height 100% the gap under its
+              // baseline overflowed the body box, whose scrollbar then took
+              // 8px off the editor's width — the text wrapped narrower than
+              // in the preview. Block display leaves only the textarea's own
+              // scrollbar, the one the preview's box shows when it scrolls.
+              display:'block',
               background:'transparent', color:'inherit', font:'inherit', lineHeight:'inherit'}}
           />
         ) : (

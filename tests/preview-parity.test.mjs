@@ -148,3 +148,12 @@ test('the body-edit textarea resets the UA padding so text does not shift', () =
   const m = componentsSrc.match(/resize:'none'[\s\S]{0,400}?padding:0/);
   assert.ok(m, "body textarea style includes padding:0 alongside resize:'none'");
 });
+
+test('the body-edit textarea is a block, so it never gives the body box a scrollbar', () => {
+  // Inline-block (the UA default) at height:100% overflowed the body box by
+  // the gap under its baseline; the box's scrollbar then made the editor wrap
+  // 8px narrower than the preview, and paragraphs reflowed on entering edit
+  // mode. The real check is in tests-e2e/markdown-render.e2e.mjs.
+  const m = componentsSrc.match(/resize:'none'[\s\S]{0,800}?display:'block'/);
+  assert.ok(m, "body textarea style includes display:'block' alongside resize:'none'");
+});

@@ -65,6 +65,26 @@ test('bare www.example.com is linkified into an <a>', async () => {
   assert.ok(link.weblink, 'anchor should carry data-weblink so clicks route to the external-open delegate');
 });
 
+test('the editor wraps at exactly the width of the rendered note: no scrollbar steals from it', async () => {
+  // The body textarea was inline-block at height 100%: the gap under its
+  // baseline overflowed the body box, whose scrollbar then took 8px off the
+  // editor, so a paragraph could re-wrap by a line on entering edit mode.
+  const preview = await app.evaljs(`document.querySelector('[data-note-id="${NOTE.plain}"] .md-body').getBoundingClientRect().width`);
+  const r = await app.noteBodyRect(NOTE.plain);
+  await app.dblclick(r.left + 20, r.top + 12);
+  const ed = await pollUntil(() => app.evaljs(`(() => {
+    const ta = document.querySelector('[data-note-id="${NOTE.plain}"] textarea');
+    if (!ta) return null;
+    const box = ta.parentElement;
+    return { width: ta.clientWidth, boxScrollbar: box.offsetWidth - box.clientWidth - box.clientLeft * 2 };
+  })()`), { timeout: 3000, interval: 50, label: 'the editor to open' });
+  await app.press('Escape');
+  await pollUntil(() => app.evaljs(`!document.querySelector('[data-note-id="${NOTE.plain}"] textarea')`),
+    { timeout: 3000, interval: 50, label: 'the editor to close' });
+  assert.equal(ed.boxScrollbar, 0, 'the body box shows no scrollbar while editing');
+  assert.ok(Math.abs(ed.width - preview) < 1, `editor wraps at ${ed.width}px, the preview at ${preview}px`);
+});
+
 /* -------- importing a markdown file as a note (issue #44) --------
  * The desk context menu's "Import markdown file…" opens a native file
  * dialog, which no headless test can drive — so these exercise everything
