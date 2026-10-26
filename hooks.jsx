@@ -14,6 +14,10 @@ function usePersistedState(key, initial) {
 // here; without one, the old import-immediately behavior applies.
 function useStickyStore(onImportRequest) {
   const [store, setStore] = useState(null);
+  // Where the notes live (Electron only): main's answer to data-folder:get.
+  // A chosen folder that can't be reached leaves `store` null — App shows
+  // what happened instead of the canvas, and nothing is ever saved.
+  const [dataFolder, setDataFolder] = useState(null);
   const saveRef = useRef(null);
   const storeRef = useRef(null);
   // In-memory undo/redo stacks. We only retain snapshots of user-content
@@ -43,6 +47,10 @@ function useStickyStore(onImportRequest) {
       let loaded = {};
       try {
         if (window.stickyAPI) {
+          const folder = window.stickyAPI.getDataFolder ? await window.stickyAPI.getDataFolder() : null;
+          if (cancelled) return;
+          if (folder) setDataFolder(folder);
+          if (folder && !folder.available) return;  // never hydrate, never save
           loaded = await window.stickyAPI.load();
         } else {
           loaded = JSON.parse(localStorage.getItem('stickies.all') ?? '{}');
@@ -199,7 +207,44 @@ function useStickyStore(onImportRequest) {
     });
   }, [scheduleSave]);
 
-  return { store, setKey, exportNow, importNow, takeSnapshot, undo, redo };
+  /* ---------- Data folder (issue #68) ---------- */
+  // Switch to another data folder (target null: the default location). Main
+  // copies or adopts and records the choice; on success the page reloads,
+  // so the notes, the pictures and the undo history all come from the new
+  // folder. The save pending for the old folder is dropped here — main has
+  // just written that store wherever it belongs — and rescheduled if the
+  // switch fails, so a failure never costs an edit.
+  const switchDataFolder = useCallback(async (target, mode, data) => {
+    if (saveRef.current) { clearTimeout(saveRef.current); saveRef.current = null; }
+    const current = storeRef.current;
+    let res;
+    try {
+      res = await window.stickyAPI.setDataFolder({
+        path: target, mode, data: data !== undefined ? data : current,
+      });
+    } catch (err) {
+      res = { ok: false, error: (err && err.message) || String(err) };
+    }
+    if (res && res.ok) {
+      try { sessionStorage.setItem('stickies.dataFolderChanged', JSON.stringify(res)); } catch {}
+      window.stickyAPI.reloadWindow();
+    } else if (current) {
+      scheduleSave(current);
+    }
+    return res;
+  }, [scheduleSave]);
+
+  // "Try again" on the unreachable-folder screen: ask main afresh, and
+  // reload into the notes once the folder is back.
+  const recheckDataFolder = useCallback(async () => {
+    const folder = await window.stickyAPI.getDataFolder();
+    setDataFolder(folder);
+    if (folder.available) window.stickyAPI.reloadWindow();
+    return folder;
+  }, []);
+
+  return { store, setKey, exportNow, importNow, takeSnapshot, undo, redo,
+    dataFolder, switchDataFolder, recheckDataFolder };
 }
 // Live answer to "is the OS in dark mode?" for the System appearance (#43).
 // prefers-color-scheme is the one signal that works in both builds: in

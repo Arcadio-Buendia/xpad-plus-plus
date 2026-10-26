@@ -62,6 +62,9 @@ if (process.env.STICKY_USER_DATA) {
 When set, ALL app data (notes.json, window.json, Chromium profile) lives
 under that directory, so tests can seed known notes at known positions and
 can never touch real user notes. Unset, the app behaves exactly as before.
+That includes `data-folder.json`, the pointer to a user-chosen data folder
+(#68): a test profile has none, so it reads notes.json from the directory
+itself, unless a test seeds one through `files` (data-folder.e2e.mjs does).
 
 ## Scenarios
 
@@ -81,6 +84,24 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   #63 typed into the empty note's editor: every `---` (even right under a
   line of text) renders as a divider, nothing becomes a heading, and each
   rendered line starts exactly where its editor line did.
+- `data-folder.e2e.mjs` — choosing the data folder (#68). File → Choose
+  where notes are saved…, clicked in the real menu through the main-process inspector,
+  shows where notes.json lives and warns that an empty folder gets a copy of
+  the open notes; Escape closes it. Handing its `onChangeDataFolder` the answer the
+  folder picker would give (`{ path, hasNotes }`) copies the notes and their
+  pictures into an empty folder, after which the reloaded app serves pictures
+  and saves edits there, not in userData; a folder that already holds notes
+  asks Cancel / "Use my current notes" / "Use the notes there", and each
+  does what it says; Reset to default location goes back. Then two launches
+  seeded with a `data-folder.json` the app can't use — a missing folder, and
+  one without notes.json (an empty mount point): the unreachable-folder
+  screen replaces the canvas, `stickyAPI.save` is refused, nothing is
+  created or written anywhere, and Try again / Use the default location
+  recover. Last, a launch whose notes.json is one comma short: the same
+  screen says the file can't be read and where the mistake is, the file is
+  byte-for-byte untouched after the post-load save would have run, and Try
+  again opens the notes once it's fixed. The picker itself is native and
+  never opened here; see the flatpak pass below.
 - `mermaid.e2e.mjs` — a valid mermaid fence becomes an SVG (async, polled);
   a garbage fence fails soft (code block stays, no svg, app still alive),
   including across an edit-mode round trip.
@@ -261,6 +282,12 @@ What to check there for the file routes into a note:
   note's "Download", then importing the file it wrote back — the file opens
   with YAML frontmatter (#40), and the imported note takes its title,
   colour and timestamps from that rather than from the filename.
+- **File → Choose where notes are saved… → Choose folder…** (#68) — the file-chooser portal in
+  directory mode, so a human again. Pick an empty folder: the canvas reloads
+  and `notes.json` + `images/` appear in it, written through the
+  `/run/user/<uid>/doc/…` path the portal handed back (the "Where your
+  notes are saved" dialog shows that path). Quit and start the app again: the notes still load from there — the
+  document portal keeps the grant across restarts.
 
 ## What only a human can check: backup files (#38)
 

@@ -9,7 +9,8 @@ function App() {
   // dialog first; only its Confirm button runs the actual import.
   const [confirmRestore, setConfirmRestore] = useState(false);
   const requestRestore = useCallback(() => setConfirmRestore(true), []);
-  const { store, setKey, exportNow, importNow, takeSnapshot, undo, redo } = useStickyStore(requestRestore);
+  const { store, setKey, exportNow, importNow, takeSnapshot, undo, redo,
+    dataFolder, switchDataFolder, recheckDataFolder } = useStickyStore(requestRestore);
   const update = useUpdateCheck();
   // Read here, above the loading gate, so the hook order never changes.
   const systemDark = useSystemDark();
@@ -35,7 +36,137 @@ function App() {
     try { localStorage.setItem('stickies.whatsNewSeen', WHATS_NEW_ID); } catch {}
     setWhatsNew(whatsNewInfo(current, seen, window.stickyAPI.isFirstRun));
   }, []);
-  if (!store) return <Loading/>;
+  // Data folder (issue #68) — File → Choose where notes are saved…, and the screen
+  // shown instead of the canvas when the chosen folder can't be reached or
+  // its notes.json can't be read.
+  //   folderPrompt: { path, kind: 'existing' | 'fresh' } — the choice that
+  //   needs the user: the folder already holds notes, or (with nothing
+  //   loaded) it holds none.
+  const [folderPrompt, setFolderPrompt] = useState(null);
+  const [folderInfo, setFolderInfo] = useState(null);
+  const [dataFolderOpen, setDataFolderOpen] = useState(false);
+  useEffect(() => {
+    if (!window.stickyAPI?.onMenuDataFolder) return;
+    const off = window.stickyAPI.onMenuDataFolder(() => setDataFolderOpen(true));
+    return () => off && off();
+  }, []);
+  const loaded = !!store;
+  // "Try again" on the unreachable-folder screen.
+  const retryDataFolder = useCallback(async () => {
+    const f = await recheckDataFolder();
+    if (!f.available) {
+      setFolderInfo(f.reason === 'unreadable'
+        ? { title: 'Where your notes are saved', message: "Still can't be read", detail: f.detail }
+        : { title: 'Where your notes are saved', message: 'Still out of reach', detail: f.path });
+    }
+  }, [recheckDataFolder]);
+  const applyDataFolder = useCallback(async (target, mode, data) => {
+    setFolderPrompt(null);
+    const res = await switchDataFolder(target, mode, data);
+    if (res && !res.ok) {
+      setFolderInfo({ title: 'Where your notes are saved', message: "Couldn't change where notes are saved", detail: res.error });
+    }
+  }, [switchDataFolder]);
+  // "Choose folder…". Called with no argument it opens the picker in
+  // main (the file-chooser portal under flatpak); a caller that already
+  // holds the picker's answer ({ path, hasNotes }) passes it in and skips
+  // only the dialog — that is the e2e suite's way in. An empty folder gets
+  // a copy of the open notes; one that already has notes asks first.
+  const changeDataFolder = useCallback(async (picked) => {
+    let choice = picked;
+    if (!choice) {
+      const res = await window.stickyAPI.chooseDataFolder();
+      if (!res || res.canceled) return;
+      if (!res.ok) {
+        setFolderInfo({ title: 'Where your notes are saved', message: "Can't keep notes in that folder",
+          detail: res.path ? `${res.path}\n\n${res.error}` : res.error });
+        return;
+      }
+      // Picking the default folder itself means "the default location".
+      choice = res.isDefault ? { ...res, path: null } : res;
+    }
+    if (choice.isCurrent) {
+      // Picked the very folder that couldn't be reached: it may be back.
+      if (!loaded) { retryDataFolder(); return; }
+      setFolderInfo({ title: 'Where your notes are saved', message: 'Your notes are already kept there',
+        detail: choice.path == null ? dataFolder?.defaultPath : choice.path });
+      return;
+    }
+    if (!loaded) {
+      // The current folder couldn't be reached, so there is nothing open to
+      // copy or to keep: open what's there, or start fresh on request.
+      if (choice.hasNotes || choice.path == null) applyDataFolder(choice.path, 'use', null);
+      else setFolderPrompt({ path: choice.path, kind: 'fresh' });
+      return;
+    }
+    if (choice.hasNotes) setFolderPrompt({ path: choice.path, kind: 'existing' });
+    else applyDataFolder(choice.path, 'copy');
+  }, [loaded, applyDataFolder, retryDataFolder, dataFolder]);
+  const resetDataFolder = useCallback(() => changeDataFolder({
+    path: null, hasNotes: !!dataFolder?.defaultHasNotes, isCurrent: !!dataFolder?.isDefault,
+  }), [changeDataFolder, dataFolder]);
+  // Confirm a switch after the reload it causes — a copy looks exactly
+  // like the canvas before it.
+  useEffect(() => {
+    if (!loaded) return;
+    let moved = null;
+    try {
+      moved = JSON.parse(sessionStorage.getItem('stickies.dataFolderChanged') || 'null');
+      sessionStorage.removeItem('stickies.dataFolderChanged');
+    } catch {}
+    if (moved && moved.path) {
+      setFolderInfo({ title: 'Where your notes are saved',
+        message: moved.isDefault ? 'Notes are back in the default location' : 'Notes are now saved in this folder',
+        detail: moved.path });
+    }
+  }, [loaded]);
+  const folderDialogs = (
+    <Fragment>
+      {dataFolderOpen && dataFolder && (
+        <DataFolderDialog T={themeTokens(store?.tweaks?.theme, resolveAppearance(store?.tweaks?.appearance, systemDark))}
+          folder={dataFolder}
+          onClose={() => setDataFolderOpen(false)}
+          onChangeDataFolder={(picked) => { setDataFolderOpen(false); changeDataFolder(picked); }}
+          onResetDataFolder={() => { setDataFolderOpen(false); resetDataFolder(); }}
+        />
+      )}
+      <InfoDialog info={folderInfo} onClose={() => setFolderInfo(null)} />
+      {folderPrompt && folderPrompt.kind === 'existing' && (
+        <DataFolderChoiceDialog T={themeTokens(store?.tweaks?.theme)}
+          folder={folderPrompt.path == null ? dataFolder?.defaultPath : folderPrompt.path}
+          isDefault={folderPrompt.path == null}
+          onCancel={() => setFolderPrompt(null)}
+          onUse={() => applyDataFolder(folderPrompt.path, 'use')}
+          onReplace={() => applyDataFolder(folderPrompt.path, 'copy')}
+        />
+      )}
+      {folderPrompt && folderPrompt.kind === 'fresh' && (
+        <ConfirmDialog T={themeTokens('paper')}
+          title="Start with no notes there?"
+          body={`${folderPrompt.path} has no notes in it. The app will start a new set of notes there, as on a fresh install.`}
+          confirmLabel="Start fresh"
+          onCancel={() => setFolderPrompt(null)}
+          onConfirm={() => applyDataFolder(folderPrompt.path, 'copy', {})}
+        />
+      )}
+    </Fragment>
+  );
+
+  if (!store) {
+    if (dataFolder && !dataFolder.available) {
+      return (
+        <Fragment>
+          <DataFolderUnavailable folder={dataFolder}
+            onRetry={retryDataFolder}
+            onChoose={() => changeDataFolder()}
+            onUseDefault={resetDataFolder}
+          />
+          {folderDialogs}
+        </Fragment>
+      );
+    }
+    return <Loading/>;
+  }
   return (
     <div style={{display:'flex', flexDirection:'column', height:'100%'}}>
       <MobileDemoBanner />
@@ -48,6 +179,7 @@ function App() {
       <InfoDialog info={update.info} onClose={update.closeInfo} />
       <InfoDialog info={whatsNew} onClose={() => setWhatsNew(null)} />
       <ImportFromImageDialog open={importHelpOpen} onClose={() => setImportHelpOpen(false)} />
+      {folderDialogs}
       {confirmRestore && (
         <ConfirmDialog T={themeTokens(store.tweaks?.theme, resolveAppearance(store.tweaks?.appearance, systemDark))}
           title="Restore backup?"

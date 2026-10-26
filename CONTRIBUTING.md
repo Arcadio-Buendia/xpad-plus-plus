@@ -39,13 +39,28 @@ Two things hold user data, and only two:
 - `notes.json` — the whole store: notes, folders, links, preferences, view state
 - `images/` — pasted pictures, named by the hash of their contents
 
-Everything else in the app's data directory is Chromium profile state. Saves are
-atomic (temp file + rename). The app reads `notes.json` at startup and does not
-watch it for outside changes.
+They live in the **data folder**: the app's data directory by default, or a
+folder the user picked under File → Choose where notes are saved… (issue #68 — typically one a sync tool
+shares between computers). `main.js`'s `dataDir()` is the one place that
+decides which; never build a path to either of them any other way. The choice
+itself is `data-folder.json` in the app's data directory — per machine, and
+outside the folder it points at, so a synced folder never carries one
+computer's path to another. Everything else in the app's data directory
+(`window.json`, the Chromium profile) is per-machine and never moves.
 
-`STICKY_USER_DATA=<dir>` relocates the whole data directory. It exists for the
-E2E tests, which use it to run against a throwaway profile — that's why the
-suite can never touch your real notes.
+Saves are atomic (temp file + rename, inside the data folder). The app reads
+`notes.json` at startup and does not watch it for outside changes. A chosen
+folder that can't be used at startup (missing, unwritable, or without a
+`notes.json` — an empty mount point) is reported to the user and nothing is
+loaded or written until they decide; never let a path fall back to an empty
+store that would be saved over the real one. The startup sweep of orphaned
+pictures only runs in the default location: in a synced folder, a picture can
+arrive before the notes that reference it.
+
+`STICKY_USER_DATA=<dir>` relocates the whole data directory, `data-folder.json`
+included, so a fresh test profile is always on the default location. It exists
+for the E2E tests, which use it to run against a throwaway profile — that's
+why the suite can never touch your real notes.
 
 ## Tests
 

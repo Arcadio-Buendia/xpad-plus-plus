@@ -13,6 +13,18 @@ function load(filePath) {
   }
 }
 
+// notes.json, for loading the notes. Missing is a first launch: {}, and the
+// renderer fills in the sample notes. A file that is there but isn't a JSON
+// object — a hand edit with a typo, another program's bad write — THROWS,
+// with the parser's line and column. Never {} for that: the renderer saves
+// once after loading, so the sample notes would replace the real ones.
+function readNotesFile(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('notes.json is valid JSON, but not an object');
+  return data;
+}
+
 function save(filePath, data) {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -274,9 +286,173 @@ function sweepOrphanImages(dir, notesFilePath) {
   return removed;
 }
 
+/* ---------- Where notes.json and images/ live (issue #68) ----------
+ * By default in userData, next to everything else. The user can move them
+ * to a folder of their own — typically one a sync tool (Syncthing,
+ * Nextcloud, Dropbox, a network share) keeps in step between computers.
+ * Only those two move: window.json and the Chromium profile describe THIS
+ * machine and stay in userData.
+ *
+ * The choice is recorded in userData/data-folder.json: per machine, and
+ * deliberately outside the folder it points at, so a synced folder never
+ * carries one computer's path to another.
+ */
+
+const DATA_FOLDER_POINTER = 'data-folder.json';
+
+// The chosen data folder, or null for the default location. Anything but an
+// absolute path in a well-formed pointer counts as no choice.
+function readDataFolderPointer(userDataDir) {
+  const file = path.join(userDataDir, DATA_FOLDER_POINTER);
+  if (!fs.existsSync(file)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    console.warn(`[storage] ignoring unreadable ${file}: ${err.message}`);
+    return null;
+  }
+  const dir = parsed && typeof parsed === 'object' ? parsed.path : null;
+  return typeof dir === 'string' && path.isAbsolute(dir) ? dir : null;
+}
+
+// Record the data folder; null goes back to the default location.
+function writeDataFolderPointer(userDataDir, dir) {
+  const file = path.join(userDataDir, DATA_FOLDER_POINTER);
+  if (dir == null) fs.rmSync(file, { force: true });
+  else save(file, { path: dir });
+}
+
+// The same folder, however it was spelled? Symlinks and trailing slashes
+// resolved where the path exists.
+function samePath(a, b) {
+  const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  return real(a) === real(b);
+}
+
+// Where notes.json and images/ are, and whether they can be used right now:
+//   { dir, isDefault, available: true }
+//   { dir, isDefault, available: false, reason, detail? } — reason is one of
+//     'missing'    the folder isn't there: a share that isn't mounted, a
+//                  drive that isn't plugged in, moved or deleted
+//     'not-folder' the path is a file
+//     'no-access'  no permission to read and write it, or its notes.json
+//     'no-notes'   the folder is there but notes.json isn't — an empty mount
+//                  point, or a sync that hasn't delivered it yet
+//     'unreadable' notes.json is there but can't be loaded (readNotesFile);
+//                  `detail` is why. The only one the default location can be.
+// A chosen folder that can't be used is REPORTED, never replaced: dir stays
+// the chosen path, nothing here creates anything, and the caller must not
+// write until the user has decided what to do. Starting empty instead would
+// save an empty store over the real notes the moment the folder came back.
+function resolveDataDir(userDataDir) {
+  const chosen = readDataFolderPointer(userDataDir);
+  if (!chosen) return unreadableNotes(userDataDir, true) || { dir: userDataDir, isDefault: true, available: true };
+  const unavailable = (reason) => ({ dir: chosen, isDefault: false, available: false, reason });
+  const rw = fs.constants.R_OK | fs.constants.W_OK;
+  let st;
+  try { st = fs.statSync(chosen); } catch (err) {
+    return unavailable(err.code === 'EACCES' || err.code === 'EPERM' ? 'no-access' : 'missing');
+  }
+  if (!st.isDirectory()) return unavailable('not-folder');
+  try { fs.accessSync(chosen, rw); } catch { return unavailable('no-access'); }
+  const notes = path.join(chosen, 'notes.json');
+  if (!fs.existsSync(notes)) return unavailable('no-notes');
+  try { fs.accessSync(notes, rw); } catch { return unavailable('no-access'); }
+  return unreadableNotes(chosen, false) || { dir: chosen, isDefault: false, available: true };
+}
+
+function unreadableNotes(dir, isDefault) {
+  try { readNotesFile(path.join(dir, 'notes.json')); return null; } catch (err) {
+    return { dir, isDefault, available: false, reason: 'unreadable', detail: err.message };
+  }
+}
+
+// The reason a folder was refused, in words for the user rather than errno.
+function folderErrorMessage(err) {
+  switch (err && err.code) {
+    case 'ENOENT': case 'ENOTDIR': return "That folder doesn't exist.";
+    case 'EACCES': case 'EPERM':   return "The app doesn't have permission to write in that folder.";
+    case 'EROFS':                  return 'That folder is read-only.';
+    default:                       return (err && err.message) || String(err);
+  }
+}
+
+// Can `dir` hold the app's data? It has to be an existing folder the app can
+// create, rename and delete files in, since every save is a temp file
+// renamed over notes.json — so that is exactly what this tries, which also
+// catches a read-only mount or a portal grant without write access before
+// anything is moved. → { ok: true, hasNotes } | { ok: false, error }
+function checkDataFolder(dir) {
+  const probe = path.join(String(dir), `.sticky-notes-write-test-${process.pid}`);
+  try {
+    if (!fs.statSync(dir).isDirectory()) return { ok: false, error: 'That is not a folder.' };
+    fs.writeFileSync(probe + '.tmp', '');
+    fs.renameSync(probe + '.tmp', probe);
+    fs.unlinkSync(probe);
+    return { ok: true, hasNotes: fs.existsSync(path.join(dir, 'notes.json')) };
+  } catch (err) {
+    for (const f of [probe + '.tmp', probe]) { try { fs.rmSync(f, { force: true }); } catch {} }
+    return { ok: false, error: folderErrorMessage(err) };
+  }
+}
+
+// Put a copy of the notes (`data`, the store as the renderer holds it) and
+// the pictures they reference into `dir`. Pictures first, so notes.json
+// never points at a file that hasn't arrived; then notes.json through the
+// usual temp file + rename, inside `dir`, so the rename never crosses a
+// filesystem. Pictures follow the content-addressed rules: re-hashed on the
+// way like any picture arriving from elsewhere (a mismatch is left behind
+// and reported), and one already there is kept — same name, same bytes. A
+// reference whose file is already gone simply has nothing to copy. Any I/O
+// failure throws, so a half-done copy is never treated as a finished one.
+function copyDataTo(dir, data, fromImagesDir) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('no notes to copy');
+  const toImages = path.join(dir, 'images');
+  const copied = [], rejected = [];
+  for (const name of referencedImageNames(data)) {
+    const from = path.join(fromImagesDir, name);
+    const to = path.join(toImages, name);
+    if (fs.existsSync(to) || !fs.existsSync(from)) continue;
+    const bytes = fs.readFileSync(from);
+    if (!imageBytesMatchName(name, bytes)) { rejected.push(name); continue; }
+    fs.mkdirSync(toImages, { recursive: true });
+    fs.writeFileSync(to, bytes);
+    copied.push(name);
+  }
+  save(path.join(dir, 'notes.json'), data);
+  return { copied, rejected };
+}
+
+// Make `target` (null: the default location) the data folder.
+//   mode 'use'  — keep the notes already there. A chosen folder must hold a
+//                 notes.json; the default location may be empty, exactly
+//                 like a fresh install.
+//   mode 'copy' — write `data` and its pictures there first, replacing any
+//                 notes.json already present.
+// Everything is checked before anything is written, and the pointer is
+// written last: a failure at any step leaves the app on the folder it was
+// using. Returns the new resolveDataDir() answer.
+function switchDataFolder(userDataDir, { target = null, mode, data, fromImagesDir } = {}) {
+  if (target != null && (typeof target !== 'string' || !path.isAbsolute(target))) {
+    throw new Error('The data folder must be an absolute path.');
+  }
+  if (mode !== 'use' && mode !== 'copy') throw new Error(`unknown mode: ${mode}`);
+  const dir = target == null ? userDataDir : path.resolve(target);
+  const toDefault = samePath(dir, userDataDir);
+  const check = checkDataFolder(dir);
+  if (!check.ok) throw new Error(check.error);
+  if (mode === 'use' && !toDefault && !check.hasNotes) throw new Error('There are no notes in that folder.');
+  if (mode === 'copy') copyDataTo(dir, data, fromImagesDir || path.join(userDataDir, 'images'));
+  writeDataFolderPointer(userDataDir, toDefault ? null : dir);
+  return resolveDataDir(userDataDir);
+}
+
 module.exports = {
   load, save, imageFileName, mimeForImageName, saveImage, saveImageFromFile,
   sweepOrphanImages, readMarkdownFile, IMAGE_FILE_RE, MAX_IMAGE_BYTES,
   referencedImageNames, imageBytesMatchName, readImages, collectImages, writeImages,
   CLIPBOARD_IMAGE_BUDGET,
+  DATA_FOLDER_POINTER, readDataFolderPointer, writeDataFolderPointer, samePath,
+  resolveDataDir, checkDataFolder, copyDataTo, switchDataFolder, readNotesFile,
 };

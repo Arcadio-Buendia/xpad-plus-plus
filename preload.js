@@ -49,6 +49,24 @@ contextBridge.exposeInMainWorld('stickyAPI', {
   // back on disk, re-hashing each one first; it never throws at the caller.
   readImages: (names) => ipcRenderer.invoke('images:read', names),
   writeImages: (images) => ipcRenderer.invoke('images:write', images),
+  // The data folder — where notes.json and images/ live (issue #68).
+  // getDataFolder() -> { path, isDefault, available, reason, defaultPath,
+  // defaultHasNotes }; when available is false nothing may be loaded or
+  // saved, and reason says why ('missing' | 'not-folder' | 'no-access' |
+  // 'no-notes').
+  getDataFolder: () => ipcRenderer.invoke('data-folder:get'),
+  // Main opens the folder picker (the file-chooser portal under flatpak)
+  // and checks the choice: { ok, path, hasNotes, isCurrent, isDefault } — or
+  // { ok:false, canceled:true }, or { ok:false, path, error }.
+  chooseDataFolder: () => ipcRenderer.invoke('data-folder:choose'),
+  // setDataFolder({ path, mode, data }) switches folders; path null means
+  // the default location. mode 'use' keeps the notes already there, 'copy'
+  // writes `data` and its pictures there first. Resolves { ok, path } and
+  // the caller reloads the page, or { ok:false, error } and nothing changed.
+  setDataFolder: (req) => ipcRenderer.invoke('data-folder:set', req),
+  // Reload the page from main — the renderer's own location.reload() is
+  // cancelled by the window's navigation guard.
+  reloadWindow: () => ipcRenderer.invoke('window:reload'),
 
   // Version of the running Electron build, captured at preload time so the
   // renderer can synchronously compare to the latest GitHub release tag.
@@ -98,5 +116,10 @@ contextBridge.exposeInMainWorld('stickyAPI', {
     const wrapped = () => cb();
     ipcRenderer.on('menu:importHelp', wrapped);
     return () => ipcRenderer.removeListener('menu:importHelp', wrapped);
+  },
+  onMenuDataFolder: (cb) => {
+    const wrapped = () => cb();
+    ipcRenderer.on('menu:dataFolder', wrapped);
+    return () => ipcRenderer.removeListener('menu:dataFolder', wrapped);
   },
 });

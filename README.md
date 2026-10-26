@@ -161,6 +161,8 @@ Launch from Spotlight (`Cmd+Space` → "Sticky Notes") or from Launchpad. To uni
 
 The JSON format is identical across all three — copy the file from one machine to another and your notes come with it.
 
+Pasted pictures live next to it, in `images/`. To keep both somewhere else — a folder that Syncthing, Nextcloud, Dropbox or a network share keeps in step between your computers, say — open **File → Choose where notes are saved…** (press Alt if the menu bar is hidden) and choose a folder. Make sure it's ready first: an empty folder gets a copy of the notes you have open; a folder that already holds notes asks whether to use the notes there or your current notes (which overwrites the ones there). The app never syncs anything itself, and only `notes.json` and `images/` move: window size and the browser profile stay on each machine. If the chosen folder can't be reached when the app starts (share not mounted, drive unplugged), it says so and saves nothing until you decide. The same goes for a `notes.json` that can't be read, say after a hand edit with a typo: the app shows where the mistake is and leaves the file alone until you fix it.
+
 ---
 
 ## License

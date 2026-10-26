@@ -2548,6 +2548,143 @@ function ConfirmDialog({T, title, body, onCancel, onConfirm, confirmLabel='Delet
     </div>
   );
 }
+// File → Choose where notes are saved… (issue #68): where notes.json and images/ live, and
+// the way to move them. A dialog of its own, not a Preferences row, so the
+// warning is in front of the user at the moment they choose: an empty folder
+// gets a copy of the open notes without asking, so a synced folder whose
+// notes.json hasn't arrived yet would get this window's notes — on a new
+// computer, the sample notes — and the sync tool would spread them. The
+// folder picker itself is native and has room for a title only.
+function DataFolderDialog({T, folder, onChangeDataFolder, onResetDataFolder, onClose}) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const outline = {padding:'8px 14px', background:'transparent', border:`1px solid ${T.panelBorder}`, borderRadius:8, fontSize:13, cursor:'pointer', color:T.panelText, transition:'background .1s'};
+  return (
+    <div style={{position:'fixed', inset:0, background:'rgba(10,14,20,.35)', zIndex:100000, display:'grid', placeItems:'center'}}>
+      <div data-data-folder-dialog style={{background:T.panelBg, color:T.panelText, borderRadius:12, border:`1px solid ${T.panelBorder}`, width:480, maxWidth:'calc(100vw - 32px)', boxSizing:'border-box', padding:22, boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+        <div style={{fontWeight:700, fontSize:16, marginBottom:6}}>Where your notes are saved</div>
+        <div style={{fontSize:13, color:T.muted}}>Your notes are kept in</div>
+        <div data-data-folder-path style={{fontFamily:'ui-monospace, monospace', fontSize:12, wordBreak:'break-all', margin:'4px 0 2px'}}>{folder.path}</div>
+        {folder.isDefault && <div style={{fontSize:12, color:T.muted}}>Default location</div>}
+        <div data-data-folder-warning style={{fontSize:13, lineHeight:1.5, marginTop:14, color: isDarkSurface(T.panelBg) ? '#ff8a80' : '#c33b3b'}}>
+          <div style={{fontWeight:700}}>Make sure the new folder is ready.</div>
+          An empty folder gets a copy of the notes you have open now. Only a
+          folder that already has notes.json lets you use the notes in it.
+        </div>
+        <div style={{display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap', marginTop:18}}>
+          <button onClick={onClose} {...hoverProps(T)} style={outline}>Cancel</button>
+          {!folder.isDefault && (
+            <button onClick={onResetDataFolder} {...hoverProps(T)} style={outline}>Reset to default location</button>
+          )}
+          <button onClick={() => onChangeDataFolder()} autoFocus
+            onMouseEnter={e=>{ e.currentTarget.style.background = mixHex(T.accent, isDarkSurface(T.panelBg) ? '#ffffff' : '#000000', .18); }}
+            onMouseLeave={e=>{ e.currentTarget.style.background = T.accent; }}
+            style={{padding:'8px 14px', background:T.accent, color: isDarkSurface(T.panelBg) ? '#0a0c10' : '#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', transition:'background .1s'}}>Choose folder…</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// Choosing a data folder that already holds notes (issue #68) — usually
+// one another computer syncs into, or the default location the notes were
+// moved out of. Three ways out; "Use the notes there" is the one that
+// destroys nothing, and overwriting them is in red.
+function DataFolderChoiceDialog({T, folder, isDefault, onUse, onReplace, onCancel}) {
+  return (
+    <div style={{position:'fixed', inset:0, background:'rgba(10,14,20,.35)', zIndex:100000, display:'grid', placeItems:'center'}}>
+      <div data-data-folder-choice style={{background:T.panelBg, color:T.panelText, borderRadius:12, border:`1px solid ${T.panelBorder}`, width:480, maxWidth:'calc(100vw - 32px)', boxSizing:'border-box', padding:22, boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+        <div style={{fontWeight:700, fontSize:16, marginBottom:6}}>
+          {isDefault ? 'The default location already has notes' : 'This folder already has notes'}
+        </div>
+        <div style={{fontFamily:'ui-monospace, monospace', fontSize:12, wordBreak:'break-all', margin:'4px 0 10px'}}>{folder}</div>
+        <div style={{fontSize:13, color:T.muted, lineHeight:1.5}}>
+          Using your current notes overwrites the notes there.
+          <br/>No merge option is supported at the moment.
+        </div>
+        <div style={{display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap', marginTop:18}}>
+          <button onClick={onCancel} {...hoverProps(T)}
+            style={{padding:'8px 14px', background:'transparent', border:`1px solid ${T.panelBorder}`, borderRadius:8, fontSize:13, cursor:'pointer', color:T.panelText, transition:'background .1s'}}>Cancel</button>
+          <button onClick={onReplace}
+            onMouseEnter={e=>{ e.currentTarget.style.background = '#a32c2c'; }}
+            onMouseLeave={e=>{ e.currentTarget.style.background = '#c33b3b'; }}
+            style={{padding:'8px 14px', background:'#c33b3b', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', transition:'background .1s'}}>Use my current notes</button>
+          <button onClick={onUse} autoFocus
+            onMouseEnter={e=>{ e.currentTarget.style.background = mixHex(T.accent, isDarkSurface(T.panelBg) ? '#ffffff' : '#000000', .18); }}
+            onMouseLeave={e=>{ e.currentTarget.style.background = T.accent; }}
+            style={{padding:'8px 14px', background:T.accent, color: isDarkSurface(T.panelBg) ? '#0a0c10' : '#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', transition:'background .1s'}}>Use the notes there</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// Shown INSTEAD of the canvas when the chosen data folder can't be used at
+// startup (issue #68): an unmounted share, an unplugged drive, a sync that
+// hasn't delivered notes.json yet — or when notes.json, in any folder, can't
+// be read (a hand edit with a typo). Nothing has been loaded, and main
+// refuses every write until the user picks one of these — so the real
+// notes can never be "fixed" by an empty canvas saved over them.
+const DATA_FOLDER_REASONS = {
+  'missing':    "that folder can't be found. If it's on a network share, an external drive or a sync service, connect it and try again.",
+  'not-folder': "that path isn't a folder.",
+  'no-access':  "the app isn't allowed to read and write there.",
+  'no-notes':   "there's no notes.json in it. If the folder is synced from another computer, it may not have arrived yet — or the share isn't mounted.",
+};
+function DataFolderUnavailable({folder, onRetry, onChoose, onUseDefault}) {
+  const unreadable = folder.reason === 'unreadable';
+  const mono = {fontFamily:'ui-monospace, monospace', fontSize:12, color:'#2a241a', wordBreak:'break-all', margin:'6px 0'};
+  const btn = {
+    padding:'8px 14px', background:'transparent', color:'#2a241a',
+    border:'1px solid #d8cfbc', borderRadius:6, fontSize:13, cursor:'pointer',
+  };
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'#14181d', overflow:'auto',
+      display:'flex', alignItems:'center', justifyContent:'center', padding:16,
+      fontFamily:'Inter, system-ui, sans-serif',
+    }}>
+      <div data-data-folder-unavailable role="alertdialog" style={{
+        background:'#fbf7ef', color:'#2a241a', border:'1px solid #d8cfbc', borderRadius:8,
+        boxShadow:'0 10px 40px rgba(0,0,0,.25)', padding:'20px 24px', maxWidth:520,
+      }}>
+        <div style={{fontSize:11, fontWeight:600, color:'#7a6f5b', marginBottom:8, textTransform:'uppercase', letterSpacing:.5}}>Where your notes are saved</div>
+        <div style={{fontSize:15, fontWeight:600, marginBottom:12}}>
+          {unreadable ? "Your notes file can't be read" : "Your notes folder can't be reached"}
+        </div>
+        {unreadable ? (
+          <div style={{fontSize:13, color:'#5a4a3a', lineHeight:1.5}}>
+            Sticky Notes keeps your notes in
+            <div style={mono}>{folder.notesFile}</div>
+            but it can't be read:
+            <div style={mono}>{folder.detail}</div>
+            Fix the file, then try again.
+          </div>
+        ) : (
+          <div style={{fontSize:13, color:'#5a4a3a', lineHeight:1.5}}>
+            Sticky Notes keeps your notes in
+            <div style={mono}>{folder.path}</div>
+            but {DATA_FOLDER_REASONS[folder.reason] || "it can't be used right now."}
+          </div>
+        )}
+        <div style={{fontSize:13, color:'#5a4a3a', lineHeight:1.5, marginTop:10}}>
+          Nothing has been loaded or saved, so {unreadable ? 'the file is untouched' : 'whatever is in that folder is safe'}.
+        </div>
+        <div style={{display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap', marginTop:18}}>
+          {!folder.isDefault && <button onClick={onUseDefault} style={btn}>Use the default location</button>}
+          <button onClick={onChoose} style={btn}>Choose another folder…</button>
+          <button onClick={onRetry} autoFocus style={{...btn, background:'#d97757', color:'#fff', border:'none', fontWeight:600}}>Try again</button>
+        </div>
+        {!folder.isDefault && (
+          <div style={{fontSize:11, color:'#7a6f5b', lineHeight:1.5, marginTop:14}}>
+            The default location is {folder.defaultPath} — it holds the notes from before you chose a folder, if there are any.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 /* ==================================================================== */
 /* FOLDERS DRAWER (right side — list of folders)                         */
 /* ==================================================================== */
@@ -3352,4 +3489,4 @@ function StatusBar({T, tweaks, folderName, noteCount, folderCount, onOpenPrefs})
   );
 }
 
-Object.assign(window, { AppGlyph, ColorDots, ConfirmDialog, ContextMenu, Desktop, EmptyState, FolderIcon, FolderTree, FoldersDrawer, HomeIcon, IMPORT_FROM_IMAGE_PROMPT, ImportFromImageDialog, InfoDialog, KeyHint, Label, Loading, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, MobileDemoBanner, PanelAction, PasteErrorToast, Segmented, StatusBar, StickyNote, TextSizeSlider, TopChrome, TweakPanel, UpdateBanner, btnS, kbdS, zBtn });
+Object.assign(window, { AppGlyph, ColorDots, ConfirmDialog, ContextMenu, DataFolderChoiceDialog, DataFolderDialog, DataFolderUnavailable, Desktop, EmptyState, FolderIcon, FolderTree, FoldersDrawer, HomeIcon, IMPORT_FROM_IMAGE_PROMPT, ImportFromImageDialog, InfoDialog, KeyHint, Label, Loading, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, MobileDemoBanner, PanelAction, PasteErrorToast, Segmented, StatusBar, StickyNote, TextSizeSlider, TopChrome, TweakPanel, UpdateBanner, btnS, kbdS, zBtn });

@@ -3,10 +3,11 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
-  load: loadNotes, save: saveNotes,
+  readNotesFile, save: saveNotes,
   saveImage, saveImageFromFile, sweepOrphanImages, readMarkdownFile, IMAGE_FILE_RE,
   referencedImageNames, readImages, collectImages, writeImages,
   CLIPBOARD_IMAGE_BUDGET,
+  resolveDataDir, checkDataFolder, switchDataFolder, readDataFolderPointer, samePath,
 } = require('./storage.js');
 const { windowStateOf, restoreWindowState } = require('./window-state.js');
 
@@ -14,7 +15,9 @@ const { windowStateOf, restoreWindowState } = require('./window-state.js');
 // window.json, the Chromium profile) under that directory instead of the real
 // user profile. Must run before app ready — everything below resolves paths
 // through app.getPath('userData'). Tests point this at a throwaway tmp dir so
-// they can seed known notes and never touch real user data.
+// they can seed known notes and never touch real user data. The data-folder
+// pointer (see dataDir below) lives there too, so a fresh test profile is
+// always on the default location unless a test seeds one.
 if (process.env.STICKY_USER_DATA) {
   app.setPath('userData', process.env.STICKY_USER_DATA);
 }
@@ -33,7 +36,21 @@ ipcMain.handle('shell:open-external', async (_e, url) => {
 });
 
 const userDataDir = () => app.getPath('userData');
-const notesPath   = () => path.join(userDataDir(), 'notes.json');
+
+// Where notes.json and images/ live (issue #68): the data folder chosen under
+// File → Choose where notes are saved…, or userData by default (storage.js resolveDataDir has the
+// rules). dataDir() is the ONE answer to "where are the notes?" — every
+// read and write of notes or pictures goes through it, and so should
+// anything that watches notes.json. Resolved on first use and again each
+// time the renderer loads the notes (startup, after a folder switch, after
+// "Try again"), so it always describes the folder the page is showing.
+let dataFolder = null;
+function refreshDataFolder() {
+  dataFolder = resolveDataDir(userDataDir());
+  return dataFolder;
+}
+const dataDir   = () => (dataFolder || refreshDataFolder()).dir;
+const notesPath = () => path.join(dataDir(), 'notes.json');
 
 // Is this a genuine first install? The renderer uses it to tell a fresh
 // install (stay quiet) apart from an upgrade by someone whose previous
@@ -41,13 +58,48 @@ const notesPath   = () => path.join(userDataDir(), 'notes.json');
 // earlier is in that state, since the recording only began in 2.0.0.
 // Answered when the preload asks (after the legacy-userData migration, and
 // before the renderer can save anything), then cached so later windows agree.
+// Someone who has chosen a data folder is never a first install, even when
+// that folder can't be reached right now.
 let firstRunFlag = null;
 ipcMain.on('app:first-run-sync', (e) => {
-  if (firstRunFlag === null) firstRunFlag = !fs.existsSync(notesPath());
+  if (firstRunFlag === null) {
+    firstRunFlag = !readDataFolderPointer(userDataDir()) && !fs.existsSync(notesPath());
+  }
   e.returnValue = firstRunFlag;
 });
 const windowPath  = () => path.join(userDataDir(), 'window.json');
-const imagesDir   = () => path.join(userDataDir(), 'images');
+const imagesDir   = () => path.join(dataDir(), 'images');
+
+// May notes.json be written? Not until the renderer has loaded the notes
+// from the current data folder, and not again from the moment the folder
+// changes until the reloaded page has loaded from the new one — so a save
+// still in flight from the old page can never land in the new folder, and a
+// folder that couldn't be reached at startup is never written at all.
+let notesWritable = false;
+
+// Every write into the data folder checks this first. A chosen folder that
+// has gone away since startup (share unmounted, drive unplugged) must not
+// be re-created by a recursive mkdir: the notes would land on the bare
+// mount point, to be hidden under the real ones once it's mounted again.
+function assertDataFolder() {
+  const f = dataFolder || refreshDataFolder();
+  if (!f.available || (!f.isDefault && !fs.existsSync(f.dir))) {
+    throw new Error(`the data folder is not available: ${f.dir}`);
+  }
+}
+
+function writeNotes(data) {
+  if (!notesWritable) throw new Error('the notes have not been loaded from the data folder');
+  assertDataFolder();
+  saveNotes(notesPath(), data);
+}
+
+// The images dir for a WRITE: the same folder as imagesDir(), behind the
+// same guard as notes.json.
+function writableImagesDir() {
+  assertDataFolder();
+  return imagesDir();
+}
 
 // One-time migration: until v1.2.3 the package was named "sticky-notes" and
 // userData lived at ~/.config/sticky-notes/. v1.3.0 renamed the package to
@@ -155,6 +207,12 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
 
+  // The renderer can't reload itself: location.reload() is a navigation
+  // like any other and the will-navigate guard below cancels it. A switch of
+  // data folder needs a fresh page (issue #68), so it asks for one here.
+  ipcMain.removeHandler('window:reload');
+  ipcMain.handle('window:reload', (e) => { e.sender.reload(); return { ok: true }; });
+
   // Note bodies can contain web links; the renderer opens them via the
   // shell:open-external IPC. These guards make the window itself inert:
   // no click, middle-click, or URL drag-drop may navigate it or spawn a
@@ -206,6 +264,12 @@ function buildMenu() {
         },
         { type: 'separator' },
         {
+          id: 'data-folder',
+          label: 'Choose where notes are saved…',
+          click: () => mainWindow?.webContents.send('menu:dataFolder'),
+        },
+        { type: 'separator' },
+        {
           label: 'Save backup…',
           click: () => mainWindow?.webContents.send('menu:export'),
         },
@@ -246,14 +310,25 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Loading re-resolves the data folder, so a page that reloads after a
+// folder switch or a "Try again" reads from wherever the pointer says now.
+// A folder that can't be used, or a notes.json that can't be read, is an
+// error, never an empty store: the renderer asks data-folder:get first and
+// shows what's wrong instead.
 ipcMain.handle('notes:load', async () => {
-  return loadNotes(notesPath());
+  notesWritable = false;
+  const f = refreshDataFolder();
+  if (!f.available) throw new Error(`the data folder is not available (${f.reason}): ${f.dir}`);
+  const data = readNotesFile(notesPath());
+  notesWritable = true;
+  return data;
 });
 
 ipcMain.handle('notes:save', async (_e, data) => {
+  if (!notesWritable) return { ok: false, error: 'the data folder is not available' };
   pendingSave = { data };
   try {
-    saveNotes(notesPath(), data);
+    writeNotes(data);
     pendingSave = null;
     return { ok: true };
   } catch (err) {
@@ -261,15 +336,84 @@ ipcMain.handle('notes:save', async (_e, data) => {
   }
 });
 
+/* ---------- The data folder (issue #68) ----------
+ * File → Choose where notes are saved…. The renderer asks where the notes are, opens
+ * the picker through data-folder:choose, decides with the user what to do
+ * when the folder already holds notes, then calls data-folder:set and
+ * reloads the page — which loads from the new folder through notes:load.
+ */
+
+ipcMain.handle('data-folder:get', async () => {
+  const f = refreshDataFolder();
+  if (!f.available) notesWritable = false;
+  return {
+    path: f.dir,
+    isDefault: f.isDefault,
+    available: f.available,
+    reason: f.reason || null,
+    detail: f.detail || null,
+    notesFile: path.join(f.dir, 'notes.json'),
+    defaultPath: userDataDir(),
+    defaultHasNotes: fs.existsSync(path.join(userDataDir(), 'notes.json')),
+  };
+});
+
+// The folder picker — the file-chooser portal in directory mode under
+// flatpak, where the app has no filesystem access of its own: the portal
+// hands back a /run/user/<uid>/doc/… path that this process may use, and
+// that grant is kept across restarts by the document store. The choice is
+// checked here (a real write + rename inside it) but nothing changes yet.
+ipcMain.handle('data-folder:choose', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a folder for your notes',
+    buttonLabel: 'Use this folder',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (canceled || !filePaths?.length) return { ok: false, canceled: true };
+  const dir = filePaths[0];
+  const check = checkDataFolder(dir);
+  if (!check.ok) return { ok: false, path: dir, error: check.error };
+  return {
+    ok: true, path: dir, hasNotes: check.hasNotes,
+    isCurrent: samePath(dir, dataDir()), isDefault: samePath(dir, userDataDir()),
+  };
+});
+
+// Switch: req = { path (null: the default location), mode, data } where
+// mode 'use' keeps the notes already there and 'copy' writes `data` (the
+// renderer's current store) and its pictures there first. On success the
+// caller reloads the page; until it has loaded from the new folder, no
+// save is accepted.
+ipcMain.handle('data-folder:set', async (_e, req) => {
+  const { path: target = null, mode, data = null } = req || {};
+  try {
+    // 'use' leaves the open notes behind: write their latest state to the
+    // folder they came from first, so the last half second of typing isn't
+    // lost. A folder that has gone away can't take it, and must not stop
+    // the user from moving on.
+    if (mode === 'use' && data && notesWritable) {
+      try { writeNotes(data); } catch (err) { console.warn('[main] final save before switching failed:', err.message); }
+    }
+    switchDataFolder(userDataDir(), { target, mode, data, fromImagesDir: imagesDir() });
+    notesWritable = false;
+    pendingSave = null;
+    refreshDataFolder();
+    console.log(`[main] data folder is now ${dataDir()}`);
+    return { ok: true, path: dataDir(), isDefault: dataFolder.isDefault };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // A picture pasted into a note body: the renderer sends the raw bytes +
-// mime type, storage.js writes them content-hashed under userData/images/,
+// mime type, storage.js writes them content-hashed under <data folder>/images/,
 // and the resolved sticky-image:// reference goes back into the markdown.
 ipcMain.handle('images:save', async (_e, bytes, mime) => {
   if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
     return { ok: false, error: 'invalid image data' };
   }
   try {
-    const name = saveImage(imagesDir(), Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), mime);
+    const name = saveImage(writableImagesDir(), Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), mime);
     return { ok: true, ref: `sticky-image://${name}` };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -287,7 +431,7 @@ ipcMain.handle('images:save-clipboard', async () => {
   try {
     const img = clipboard.readImage();
     if (!img || img.isEmpty()) return { ok: false, error: 'no image on the clipboard' };
-    const name = saveImage(imagesDir(), img.toPNG(), 'image/png');
+    const name = saveImage(writableImagesDir(), img.toPNG(), 'image/png');
     return { ok: true, ref: `sticky-image://${name}` };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -318,7 +462,7 @@ ipcMain.handle('clipboard:read', async () => {
 function storeImageFile(filePath) {
   if (typeof filePath !== 'string' || !filePath) return { ok: false, error: 'no file path' };
   try {
-    return { ok: true, ref: `sticky-image://${saveImageFromFile(imagesDir(), filePath)}` };
+    return { ok: true, ref: `sticky-image://${saveImageFromFile(writableImagesDir(), filePath)}` };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -368,7 +512,7 @@ function restoreBackupImages(images, data) {
     for (const [name, b64] of Object.entries(images || {})) {
       if (referenced.has(name)) wanted[name] = b64;
     }
-    const { written, skipped, rejected } = writeImages(imagesDir(), wanted);
+    const { written, skipped, rejected } = writeImages(writableImagesDir(), wanted);
     for (const r of rejected) console.warn(`[main] backup image refused (${r.name}): ${r.reason}`);
     return { written: written.length, skipped: skipped.length, rejected: rejected.length };
   } catch (err) {
@@ -396,7 +540,7 @@ ipcMain.handle('images:read', async (_e, names) => {
 // refuses anything whose bytes don't match the name they claim.
 ipcMain.handle('images:write', async (_e, images) => {
   try {
-    const { written, skipped, rejected } = writeImages(imagesDir(), images);
+    const { written, skipped, rejected } = writeImages(writableImagesDir(), images);
     for (const r of rejected) console.warn(`[main] pasted image refused (${r.name}): ${r.reason}`);
     return { ok: true, written, skipped, rejected };
   } catch (err) {
@@ -506,7 +650,7 @@ app.whenReady().then(() => {
 
   // Serve pasted note images over the app-private sticky-image:// scheme.
   // mdToHtml only emits <img> tags for this exact reference shape, and this
-  // handler only serves hash-named files out of userData/images/ — no path
+  // handler only serves hash-named files out of <data folder>/images/ — no path
   // traversal, no arbitrary file reads reachable from note content.
   protocol.handle('sticky-image', (request) => {
     let name = '';
@@ -520,10 +664,17 @@ app.whenReady().then(() => {
 
   // Deleting a note (or undoing an image paste) leaves its image files
   // behind; sweep them now, before any renderer exists — the only moment
-  // an image can't be mid-paste.
+  // an image can't be mid-paste. Never in a chosen data folder: another
+  // computer syncing it may already have delivered a picture whose notes
+  // haven't arrived yet, and deleting it here would delete it there too.
+  // Nor next to a notes.json that can't be read: its references can't be
+  // trusted, and the user hasn't decided what to do with it yet.
   try {
-    const removed = sweepOrphanImages(imagesDir(), notesPath());
-    if (removed.length) console.log(`[main] removed ${removed.length} orphan image(s)`);
+    const folder = refreshDataFolder();
+    if (folder.isDefault && folder.available) {
+      const removed = sweepOrphanImages(imagesDir(), notesPath());
+      if (removed.length) console.log(`[main] removed ${removed.length} orphan image(s)`);
+    }
   } catch (err) {
     console.warn('[main] orphan image sweep failed:', err.message);
   }
@@ -552,7 +703,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   if (pendingSave) {
     try {
-      saveNotes(notesPath(), pendingSave.data);
+      writeNotes(pendingSave.data);
     } catch (err) {
       console.warn('[main] final save failed:', err.message);
     }
