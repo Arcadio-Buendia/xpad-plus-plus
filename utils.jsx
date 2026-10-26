@@ -11,6 +11,30 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "hideNoteTitles": false
 }/*EDITMODE-END*/;
 
+/* ---------- NOTE TEXT SIZE (issue #67) ----------
+ * Preferences → Note text size, stored as tweaks.noteTextSize: a whole
+ * percentage, one of the steps below. Stores written before the setting
+ * existed have no such key and read as 100%, so nothing about them changes.
+ */
+const NOTE_TEXT_SIZES = [85, 100, 115, 130, 150, 175, 200];
+// The multiplier every note's text is drawn at. Anything that isn't a number
+// reads as 100%; a number outside the steps is held to the nearest end.
+function noteTextScale(tweaks) {
+  const v = tweaks ? tweaks.noteTextSize : undefined;
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 1;
+  const min = NOTE_TEXT_SIZES[0], max = NOTE_TEXT_SIZES[NOTE_TEXT_SIZES.length - 1];
+  return Math.min(max, Math.max(min, v)) / 100;
+}
+// Where the Preferences slider sits for a stored size: the index of the
+// nearest step (a hand-edited value between steps sits on the closer one,
+// the lower on a tie). Anything that isn't a number sits at 100%.
+function noteTextSizeStep(value) {
+  const v = typeof value === 'number' && Number.isFinite(value) ? value : 100;
+  let best = 0;
+  NOTE_TEXT_SIZES.forEach((s, i) => { if (Math.abs(s - v) < Math.abs(NOTE_TEXT_SIZES[best] - v)) best = i; });
+  return best;
+}
+
 /* ---------- COLOR PALETTES ---------- */
 const NOTE_COLORS = [
   { id: "red",    name: "Red",     paper: "#f8a6a0", flat: "#ffc2bd", term: "#f8a6a0", ink: "#3a1410" },
@@ -1815,4 +1839,4 @@ function downloadUrlForPlatform(version) {
 }
 const MOBILE_BANNER_DISMISSED_KEY = 'stickies.mobileBannerDismissed';
 const MOBILE_BANNER_MAX_WIDTH = 640;
-Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_COLORS, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, appendOnOwnLine, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editOnPaste, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, notePasteAction, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, toggleTaskItem, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });
+Object.assign(window, { CLIPBOARD_IMAGE_BYTES, FOLDER_COLORS, FOLDER_HUES, HOVER_ALPHA, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, NOTE_COLORS, NOTE_TEXT_SIZES, SEED, STICKY_CLIPBOARD_MARKER, TWEAK_DEFAULTS, WHATS_NEW_ID, ZOOM_MAX, ZOOM_MIN, appendOnOwnLine, applyNotePatch, canMoveFolder, canvasPasteAction, clipboardImagesFor, clipboardTextToNotes, cmpSemver, downloadJSON, downloadNoteAsMarkdown, downloadUrlForPlatform, editLinkOnPaste, editListOnEnter, editListOnTab, editOnPaste, editQuoteOnPaste, flattenFolderTree, flattenPreviewText, folderPath, folderSubtreeIds, hashRot, hasTextSelection, hexChannels, hoverBg, hoverInk, imageMimeForFile, imageRefsInNotes, isDarkSurface, markdownFileBody, markdownFileTitle, markdownFileToNote, markdownVisibleText, mdToHtml, migrateTweaks, mixHex, normHex, noteDownloadFilename, noteTextScale, noteTextSizeStep, notePasteAction, notesToClipboardText, noteToMarkdown, openWebLink, pickJSONFile, pickMarkdownFiles, pinchView, renderedWordAt, resolveAppearance, sanitizeFolderParents, sourceCaretForPreviewClick, sourceOffsetForWord, themeTokens, toggleTaskItem, uid, whatsNewInfo, withA, withDefaults, zoomActionForKey, zoomViewAt });

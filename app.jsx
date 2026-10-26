@@ -847,23 +847,28 @@ globalStyle.textContent = `
   .md-body h5 { font-size: 1.15em; margin: 0; font-weight: 700; opacity: .9; }
   .md-body h6 { font-size: 1em; margin: 0; font-weight: 700; opacity: .75; text-transform: uppercase; letter-spacing: .05em; }
   .md-body p { margin: 0; }
-  .md-body ul { margin: 0; padding-left: 18px; }
-  .md-body ol { margin: 0; padding-left: 18px; }
+  /* --note-text-scale is Preferences → Note text size (#67), set on the note
+     body. Text sizes here are em and follow it on their own; the list indent
+     is px, so it is scaled explicitly — the markers grow with the text and
+     were clipped off the note's left edge at 200% without this. */
+  .md-body ul { margin: 0; padding-left: calc(18px * var(--note-text-scale, 1)); }
+  .md-body ol { margin: 0; padding-left: calc(18px * var(--note-text-scale, 1)); }
   .md-body ol ol { list-style: lower-alpha; }
   .md-body ol ol ol { list-style: lower-roman; }
   .md-body li { margin: 0; }
   /* Task list items (#65). The checkbox is drawn in the note's own ink, so it
      suits every theme, colour and font; it is inline and shorter than the
      text, so the line keeps exactly its height (#26). In a bullet list it
-     takes the bullet's place — the hang is capped at the 18px list indent so
-     a big font can't push it out of the list; numbered items keep their
-     number. A ticked item's text dims a little, never its sub-items. */
+     takes the bullet's place — the hang is capped at the list indent, which
+     grows with the note text size (#67), so a big font can't push it out of
+     the list; numbered items keep their number. A ticked item's text dims a
+     little, never its sub-items. */
   .md-body ul > li.task-list-item { list-style: none; }
   .md-body .task-list-item-checkbox { appearance: none; box-sizing: border-box; position: relative;
     width: .8em; height: .8em; margin: 0; margin-inline-end: .3em; padding: 0; vertical-align: -.1em;
     font-size: inherit; color: inherit; background: transparent; cursor: pointer;
     border: max(1px, .09em) solid currentColor; border-radius: .18em; opacity: .7; }
-  .md-body ul > li.task-list-item > .task-list-item-checkbox { margin-inline-start: max(-1.1em, -18px); }
+  .md-body ul > li.task-list-item > .task-list-item-checkbox { margin-inline-start: max(-1.1em, calc(-18px * var(--note-text-scale, 1))); }
   .md-body .task-list-item-checkbox:checked { opacity: 1; }
   .md-body .task-list-item-checkbox:checked::after { content: ""; position: absolute; left: 32%; top: 6%;
     width: 24%; height: 54%; border: solid currentColor; border-width: 0 max(1px, .1em) max(1px, .1em) 0;
@@ -880,7 +885,10 @@ globalStyle.textContent = `
      the fallback for a browser without the lh unit (web demo): today's bare
      rule, still visible. */
   .md-body hr { border: none; margin: 0; height: 1px; height: 1lh; background: linear-gradient(rgba(0,0,0,.2), rgba(0,0,0,.2)) no-repeat center / 100% 1px; }
-  .md-body .mermaid-diagram { margin: 0; }
+  /* A diagram's labels are note text too (#67). zoom grows its natural size
+     with the text; the svg's own max-width: 100% still caps it at the width
+     of the note, so a big diagram in a narrow note is unchanged. */
+  .md-body .mermaid-diagram { margin: 0; zoom: var(--note-text-scale, 1); }
   .md-body .mermaid-diagram svg { max-width: 100%; height: auto; }
   .md-body code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: .88em; background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 3px; }
   .md-body a.note-link { color: inherit; text-decoration: underline dotted; cursor: pointer; background: rgba(0,0,0,.05); padding: 0 3px; border-radius: 2px; }

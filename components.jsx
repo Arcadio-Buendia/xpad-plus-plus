@@ -1959,7 +1959,12 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
   // faces, so at a shared px size it reads noticeably smaller and harder to make
   // out. Scale note text up when it's active so it sits at a comparable visual
   // size to Inter/Serif/Mono. (issue #8)
-  const fontScale = tweaks.font === 'Caveat' ? 1.35 : 1;
+  // Preferences → Note text size multiplies on top, for the title and the
+  // body alike — it is "all of the text in my notes" that someone with poor
+  // eyesight can't read, and a 12px title over 36px body would still be
+  // unreadable. The note box keeps its size; the text wraps inside it. (#67)
+  const textScale = noteTextScale(tweaks);
+  const fontScale = (tweaks.font === 'Caveat' ? 1.35 : 1) * textScale;
 
   return (
     // Deliberately NOT html5-draggable (issue #30): a `draggable` root made
@@ -2182,6 +2187,10 @@ function StickyNote({note, T, tweaks, folder, refCb, selected, selectedIds, setS
           fontFamily: '"'+tweaks.font+'", system-ui, sans-serif',
           fontSize: (tweaks.theme==='paper' ? 18 : 13.5) * fontScale,
           lineHeight: tweaks.theme==='paper' ? 1.35 : 1.5,
+          // The preview and the editor both inherit the size above, so they
+          // scale identically by construction (#26). This variable is only
+          // for the few .md-body lengths that are px, not em (see app.jsx).
+          '--note-text-scale': textScale,
           color:ink,
           // Body text is selectable like a normal web page (issue #30) so a
           // snippet can be copied without entering edit mode. Only the header
@@ -3189,6 +3198,8 @@ function TweakPanel({T, tweaks, update, onClose, onImportFromImage}) {
       <Segmented T={T} value={tweaks.font} onChange={v=>update({font:v})} options={[
         {id:'Inter',label:'Inter'},{id:'Source Serif 4',label:'Serif'},{id:'IBM Plex Mono',label:'Mono'},{id:'Caveat',label:'Handwritten'}
       ]}/>
+      <Label>Note text size</Label>
+      <TextSizeSlider T={T} value={tweaks.noteTextSize} onChange={v=>update({noteTextSize:v})}/>
       <Label>Density</Label>
       <Segmented T={T} value={tweaks.density} onChange={v=>update({density:v})} options={[
         {id:'compact',label:'Compact'},{id:'cozy',label:'Cozy'},{id:'spacious',label:'Spacious'}
@@ -3266,6 +3277,28 @@ function Segmented({T, value, onChange, options}) {
     </div>
   );
 }
+// Preferences → Note text size (#67): a slider over the steps, from a small
+// A to a big A, with the size read out beside it. It snaps to the steps, and
+// the arrow keys move it one step, as on any range input. The notes follow
+// it live while it is dragged.
+function TextSizeSlider({T, value, onChange}) {
+  const pct = Math.round(noteTextScale({noteTextSize: value}) * 100);
+  const glyph = (size) => (
+    <span aria-hidden="true" style={{flex:'none', fontSize:size, fontWeight:600, lineHeight:'20px', color:T.panelText}}>A</span>
+  );
+  return (
+    <div role="group" aria-label="Note text size" style={{display:'flex', alignItems:'center', gap:8, padding:'2px 4px'}}>
+      {glyph(11)}
+      <input type="range" min={0} max={NOTE_TEXT_SIZES.length - 1} step={1}
+        value={noteTextSizeStep(value)}
+        onChange={e=>onChange(NOTE_TEXT_SIZES[Number(e.target.value)])}
+        aria-label="Note text size" aria-valuetext={`${pct}%`}
+        style={{flex:1, minWidth:0, margin:0, accentColor:T.accent, cursor:'pointer'}}/>
+      {glyph(16)}
+      <output aria-live="polite" style={{flex:'none', width:38, textAlign:'right', fontSize:12, fontWeight:600, fontVariantNumeric:'tabular-nums', color:T.panelText}}>{pct}%</output>
+    </div>
+  );
+}
 /* ==================================================================== */
 /* STATUS BAR                                                            */
 /* ==================================================================== */
@@ -3319,4 +3352,4 @@ function StatusBar({T, tweaks, folderName, noteCount, folderCount, onOpenPrefs})
   );
 }
 
-Object.assign(window, { AppGlyph, ColorDots, ConfirmDialog, ContextMenu, Desktop, EmptyState, FolderIcon, FolderTree, FoldersDrawer, HomeIcon, IMPORT_FROM_IMAGE_PROMPT, ImportFromImageDialog, InfoDialog, KeyHint, Label, Loading, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, MobileDemoBanner, PanelAction, PasteErrorToast, Segmented, StatusBar, StickyNote, TopChrome, TweakPanel, UpdateBanner, btnS, kbdS, zBtn });
+Object.assign(window, { AppGlyph, ColorDots, ConfirmDialog, ContextMenu, Desktop, EmptyState, FolderIcon, FolderTree, FoldersDrawer, HomeIcon, IMPORT_FROM_IMAGE_PROMPT, ImportFromImageDialog, InfoDialog, KeyHint, Label, Loading, MOBILE_BANNER_DISMISSED_KEY, MOBILE_BANNER_MAX_WIDTH, MobileDemoBanner, PanelAction, PasteErrorToast, Segmented, StatusBar, StickyNote, TextSizeSlider, TopChrome, TweakPanel, UpdateBanner, btnS, kbdS, zBtn });

@@ -187,6 +187,22 @@ can never touch real user notes. Unset, the app behaves exactly as before.
   unticks; a double-click is two toggles, never an edit; the tick survives
   a reload; double-clicking a task's text still puts the caret on that
   word; Enter in the editor continues a task item with `- [ ] `.
+- `text-size.e2e.mjs` — Preferences → Note text size (#67), driven through
+  the real slider — its arrow keys, and a thumb dragged past either end of
+  the track — on a store that never had the setting (reads 100%, 18px body,
+  12px title, as before). Body, title, headings, code, table and
+  list indent all grow by the chosen factor, the mermaid diagram with them
+  (capped at the note width), and the note boxes keep their size. At 100%,
+  150% and 200% the editor puts every word on the same line as the preview:
+  a hidden clone of the real textarea is fed each word's prefix and its
+  `scrollHeight` gives the line that word ends on, compared against the
+  preview's glyph rects — the check that caught the editor wrapping 8px
+  narrower than the preview at every size. At 150% and 200% double-clicking
+  a word still opens the editor on it (including one scrolled into view
+  first); at 200% the selection drags of `selection.e2e.mjs` still snap and
+  stay contained, and a task checkbox (#65) still hangs to the start of the
+  grown list indent like a bullet. The size lands in `notes.json` with the other tweaks,
+  survives a reload, and stepping back to 100% restores every measurement.
 
 ## Verifying inside the flatpak (pre-release)
 
