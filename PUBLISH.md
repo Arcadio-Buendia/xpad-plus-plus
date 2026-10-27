@@ -28,7 +28,7 @@ display name. Original Git history and the upstream MIT notice are retained.
 4. Push the prepared local branch:
 
    ```bash
-   cd /home/shadead/Project/sticky/StickyNotesCanvas
+   cd /path/to/xpad-plus-plus
    git push -u origin HEAD:main
    ```
 

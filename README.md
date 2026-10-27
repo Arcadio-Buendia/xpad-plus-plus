@@ -1,8 +1,9 @@
 # xpad++
 
-Xpad-style sticky notes on a transparent desktop canvas, built for Linux and GNOME.
+Xpad-style sticky notes on a transparent desktop canvas, built for Linux desktops.
 Keep your notes over your desktop, put them where you want, and find them in the
-same place next time.
+same place next time. Developed on GNOME; other desktops need a compositor that
+supports transparent Electron windows.
 
 Built from [StickyNotesCanvas](https://github.com/faridjaff/StickyNotesCanvas) by
 [faridjaff](https://github.com/faridjaff). Thank you for the original Electron app,
@@ -11,42 +12,36 @@ minimal interface inspired by [Xpad](https://launchpad.net/xpad).
 
 ## Features
 
-- Transparent, frameless desktop window that opens maximized.
+- Transparent, frameless desktop window that always opens maximized.
 - Notes without title bars; drag them by their bottom toolbar or Ctrl+drag the text.
 - Resize notes using the bottom-right corner.
 - Persistent text, positions, dimensions, colors, font settings, and canvas scroll.
-- A new note created with **+** inherits its parent's size, background, font, text
-  size, and text color, with an empty body and a slightly offset position.
-- **Kalam** as the default note font; choose from installed system and user fonts.
+- **+** creates a blank note inheriting its parent's size, colors, and font settings.
+- **Kalam bundled with the app**: no font installation or network request needed.
+- Choose installed fonts when Fontconfig is available; otherwise use bundled Kalam
+  and generic fonts. Unavailable custom fonts fall back to Kalam.
 - Per-note background and text colors, font family, and text size.
-- Small note toolbar with new, undo, redo, properties, and delete controls.
+- Small toolbar with new, undo, redo, properties, and delete controls.
 - Close notes without deleting them; restore them with **Show all notes**.
 - Confirmation before permanently deleting a note.
 - Scrollable canvas with hidden scrollbars.
-- Xpad migration that merges notes, preserves their text and colors, backs up the
-  existing store, and avoids duplicate imports on repeat runs.
-- GNOME login autostart through the migration/setup command.
-- Offline browser preview with a separate browser-local note store.
+- Optional Xpad migration with backups and duplicate-import detection.
+- Optional desktop-session autostart, independent of whether Xpad is installed.
+- Offline browser preview with its own browser-local note store and bundled Kalam.
 
 Notes are plain text. Xpad's rich text styling, system tray, and cross-workspace
-window features are not implemented. Transparency is confirmed working on the
-development GNOME setup; support can vary with the desktop compositor.
+window features are not implemented. Desktop transparency depends on the
+compositor; browser windows cannot show the desktop through their page background.
 
-## Installation: the setup used for this project
+## Install and run
 
-You need Git, Node.js 22 with npm, and Fontconfig (`fc-list`). Python 3 is used by
-the optional migration and browser-packaging scripts. Install the Kalam font
-through GNOME Fonts or your distribution if it is not already installed:
+The desktop app targets Linux. You need Git and **Node.js 22+ with npm**, plus a
+normal graphical desktop capable of running Electron. Python 3 is only needed for
+the optional setup, migration, and browser-packaging scripts. Fontconfig (`fc-list`)
+is optional: it enables the system-font list, but is not needed for Kalam or
+basic note editing. Neither GJS nor a system-installed Kalam font is required.
 
-```bash
-fc-match Kalam
-```
-
-Check that the reported family is Kalam; Fontconfig otherwise reports a substitute.
-
-### 1. Install Node.js and npm with nvm
-
-This installs them under your user account, without `sudo`:
+The Node.js setup used during development was nvm, installed without `sudo`:
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | bash
@@ -54,71 +49,97 @@ source ~/.bashrc
 nvm install 22
 ```
 
-If nvm is already installed, use `nvm use 22` instead.
-
-### 2. Clone, install, and launch
+This example assumes Bash; other shells should load nvm using its own setup
+instructions. If you already have a supported Node.js installation, skip nvm.
 
 ```bash
 git clone https://github.com/arcadio-buendia/xpad-plus-plus.git
 cd xpad-plus-plus
-nvm use 22
+# If using nvm, select the version from .nvmrc:
+nvm use
 npm ci
 npm start
 ```
 
-`npm start` compiles the renderer before launching Electron. The app works offline
-after its dependencies are installed. To quit the frameless app, press **Ctrl+Q**.
+`npm start` builds the renderer before launching Electron. Once dependencies are
+installed, the app and its default font work offline. Quit with **Ctrl+Q**.
 
-### 3. Build the desktop app
-
-This is the unpacked Linux build used during development:
+## Build a standalone desktop app
 
 ```bash
-npm run build -- --linux --dir --config.electronDist=node_modules/electron/dist
+npm run build:desktop
+```
+
+This uses the Electron distribution already installed by `npm ci`, avoiding a
+second Electron download during packaging. On Linux x64, launch the result with:
+
+```bash
 ./dist/linux-unpacked/sticky-notes-canvas
 ```
 
-Using the installed Electron distribution avoids downloading Electron again while
-packaging. To build Linux installers instead:
+On ARM64 the output directory is `dist/linux-arm64-unpacked`. The setup script
+below selects the build directory for the current architecture automatically. This
+packaging path has been validated locally on Linux x64; ARM64 is not yet tested on
+hardware.
+
+`npm run build:linux` also exposes the inherited `.deb`, AppImage, and Snap targets.
+These installer formats have not all been validated for xpad++; Snap packaging
+requires additional Snap tooling. Use the unpacked build above for the documented
+installation path.
+
+## Start at desktop login
+
+Build the app, then enable autostart for your current user:
 
 ```bash
-npm run build:linux
+python3 scripts/desktop_setup.py --apply
 ```
 
-The inherited targets are `.deb`, AppImage, and Snap; these installer formats have
-not all been validated for xpad++. The unpacked Linux build has been validated.
+This does **not** require Xpad or any imported notes. It writes a Desktop Entry
+under `$XDG_CONFIG_HOME/autostart` (normally `~/.config/autostart`), backing up a
+previous xpad++ entry before replacing it. Leave off `--apply` to preview it.
+Autostart runs the built executable directly, so nvm and npm need not be loaded
+by your desktop session.
 
-## Import Xpad notes and enable GNOME autostart
+The entry points to the build in this checkout. Keep it there, rerun setup after
+moving it, or use a stable installation/AppImage path:
 
-Build the desktop app first. Xpad notes are read from `$XDG_CONFIG_HOME/xpad`
-(default `~/.config/xpad`). Preview the migration without changing either app:
+```bash
+python3 scripts/desktop_setup.py --apply --executable /path/to/xpad-app
+```
+
+Use `--replace-xpad` if you also want to back up and disable Xpad's login entry.
+Other startup applications are left alone. This setup is intended for Linux
+sessions that support XDG autostart, including GNOME.
+
+## Import Xpad notes
+
+Migration is optional. By default, the script reads `$XDG_CONFIG_HOME/xpad`
+(normally `~/.config/xpad`), falling back to the older `~/.xpad` location.
+It merges with your existing canvas notes, preserves Xpad's text, dimensions,
+colors, and font settings, and arranges the imported notes without overlaps.
+Original Xpad files are kept unchanged; repeated imports skip already imported
+notes. The app also honors its configured custom data folder.
+
+Preview first, then close xpad++ with **Ctrl+Q** and apply:
 
 ```bash
 python3 scripts/migrate-xpad.py
+python3 scripts/migrate-xpad.py --apply
 ```
 
-Then close xpad++ with **Ctrl+Q** and apply:
+The default `--apply` also enables xpad++ autostart and backs up and disables
+Xpad's autostart entry if present. Use `--skip-autostart` to migrate only, including
+when you have not built the standalone app. Source, profile, and layout options
+are available for other installations:
 
 ```bash
-python3 scripts/migrate-xpad.py --apply
-npm start
+python3 scripts/migrate-xpad.py --source /path/to/xpad --skip-autostart
+python3 scripts/migrate-xpad.py --apply --source /path/to/xpad --user-data-dir /path/to/canvas-profile --canvas-width 1920 --skip-autostart
 ```
 
-The script:
-
-- Merges Xpad notes into the existing canvas store and keeps the Xpad originals.
-- Preserves note text, dimensions, background/text colors, and font settings.
-- Arranges imported notes below existing ones without overlaps; Xpad positions
-  were all recorded as `(0, 0)` in the development GNOME session.
-- Creates a timestamped backup under
-  `~/.config/sticky-notes-canvas/migration-backups/` (or the equivalent XDG path).
-- Installs `~/.config/autostart/sticky-notes-canvas.desktop` to launch the built
-  app at GNOME login, and backs up and disables the existing `xpad.desktop`
-  autostart entry if present.
-
-The autostart entry points to this checkout's `dist/linux-unpacked` executable.
-Keep the checkout in place, or rerun setup after moving and rebuilding it. The
-script currently expects the default canvas data folder.
+The script reports its timestamped backup location. Private previews in
+`local-migration/` are excluded from Git.
 
 ## Controls
 
@@ -126,10 +147,10 @@ script currently expects the default canvas data folder.
 | --- | --- |
 | New note with parent's appearance | **+** on a note |
 | New note with defaults | **Ctrl+N**, or double-click empty canvas |
-| Move a note | Drag the bottom toolbar, or Ctrl+drag its text area |
+| Move a note | Drag its bottom toolbar, or Ctrl+drag the text area |
 | Resize a note | Drag its bottom-right corner |
 | Colors, fonts, close, and show all | Right-click a note, or use **⋯** |
-| Close the current note, keeping it saved | **Ctrl+W** while editing |
+| Close a note, keeping it saved | **Ctrl+W** while editing |
 | Delete a note | **−**, then confirm |
 | Scroll the canvas | Mouse wheel or touchpad |
 | Dismiss a menu or deletion dialog | **Escape** |
@@ -137,13 +158,14 @@ script currently expects the default canvas data folder.
 
 ## Where notes are saved
 
-Desktop notes are stored in `~/.config/sticky-notes-canvas/notes.json` by default
-(on Linux), respecting Electron's normal configuration location. The internal
-package name stays `sticky-notes-canvas` to preserve existing notes and autostart
-paths. Back up this directory before moving between machines.
-
-Local migration previews under `local-migration/` contain personal notes and are
-excluded from Git, as are `node_modules/` and `dist/`.
+Linux desktop notes normally live in
+`$XDG_CONFIG_HOME/sticky-notes-canvas/notes.json` (default
+`~/.config/sticky-notes-canvas/notes.json`). The internal package name remains
+`sticky-notes-canvas` to preserve existing notes and autostart entries.
+`STICKY_USER_DATA` can select a separate profile, and migration's
+`--user-data-dir` option accepts the same directory. Back up your profile before
+moving between machines. Custom fonts other than bundled Kalam must be installed
+on the destination machine to render identically.
 
 ## Browser preview
 
@@ -153,29 +175,38 @@ python3 scripts/package-browser.py
 ./launch-preview.sh
 ```
 
-The browser preview stores notes separately in the browser's local storage.
-Desktop transparency and system font enumeration require Electron; a browser
-window cannot reveal your wallpaper through its page background.
+You can also open `dist/xpad-browser/index.html` directly. The preview and ZIP
+include Kalam and its license. Browser notes live separately in localStorage;
+keep using the same browser and file path to reopen them. Desktop transparency
+and installed-font discovery require Electron.
 
 ## Development checks
 
 ```bash
-npm run build:ui
+npm test
+python3 -m unittest discover -s tests
 node --check main.js
-node --test tests/system-fonts.test.mjs
-python3 tests/xpad-migration-test.py
+npm run build:desktop
 ```
 
-If GJS is installed, `gjs tests/xpad-smoke.gjs` also checks the renderer's note
-creation, appearance inheritance, persistence, closing, deletion, and load failures.
-The repository retains tests from the original application; some target UI
-features that xpad++ has removed.
+`npm test` rebuilds the renderer and checks font discovery/fallback, bundled font
+assets, note creation and appearance inheritance, persistence, closing, deletion,
+and load failures. Python checks cover migration, clean-user autostart, XDG and
+legacy paths, custom data folders, ARM build discovery, and browser packaging.
+These checks do not replace testing transparency on a real desktop.
+
+Tests from StickyNotesCanvas are retained separately as `npm run test:upstream`;
+some cover features removed from xpad++. Its inherited `test:e2e` suite also targets
+the old UI and is not a current xpad++ acceptance suite.
 
 ## Credits and license
 
 - **Original project:** [faridjaff/StickyNotesCanvas](https://github.com/faridjaff/StickyNotesCanvas).
 - **Interface inspiration:** [Xpad](https://launchpad.net/xpad).
 - **xpad++ adaptations:** [arcadio-buendia](https://github.com/arcadio-buendia).
+- **Kalam:** Indian Type Foundry, designed by Lipi Raval and Jonny Pinhorn;
+  [font source and notices](assets/fonts/Kalam-README.md),
+  [SIL Open Font License 1.1](assets/fonts/Kalam-OFL.txt).
 
-MIT licensed. The original copyright and license are preserved in [LICENSE](LICENSE).
-Bundled libraries retain their own license notices.
+App code is MIT licensed. The original copyright and license are preserved in
+[LICENSE](LICENSE). Bundled fonts and libraries retain their own licenses.

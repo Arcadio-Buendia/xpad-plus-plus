@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Merge Xpad notes and configure GNOME autostart. Preview is the default."""
 import argparse
+import sys
 import datetime
 import json
 import os
@@ -10,10 +11,12 @@ import shutil
 import socket
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
+# Also support importlib-based tests and running this script from another folder.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from desktop_setup import config_root, atomic_write, desktop_executable, install_autostart
 
 def fields(path):
-    return dict(line.split(' ', 1) for line in path.read_text().splitlines() if ' ' in line)
+    return dict(line.split(' ', 1) for line in path.read_text(encoding='utf-8').splitlines() if ' ' in line)
 
 def color(value, fallback):
     match = re.fullmatch(r'rgb\((\d+),(\d+),(\d+)\)', value or '')
@@ -24,7 +27,11 @@ def color(value, fallback):
         raise ValueError('Invalid Xpad color')
     return '#' + ''.join(f'{n:02x}' for n in rgb)
 
-def merge_xpad(source, store):
+def merge_xpad(source, store, canvas_width=1200):
+    if not source.is_dir():
+        raise ValueError(f'Xpad notes folder does not exist: {source}')
+    if canvas_width < 180:
+        raise ValueError('Canvas width must be at least 180 pixels.')
     result = dict(store)
     notes = [dict(n) for n in store.get('notes', [])]
     defaults = fields(source / 'default-style') if (source / 'default-style').exists() else {}
@@ -39,9 +46,9 @@ def merge_xpad(source, store):
         note_id = 'xpad-' + content_name
         if note_id in ids:
             continue
-        body = (source / content_name).read_text()
+        body = (source / content_name).read_text(encoding='utf-8')
         w, h = max(180, int(info.get('width', 280))), max(140, int(info.get('height', 260)))
-        if x + w > 1600 and x > 40:
+        if x + w > canvas_width and x > 40:
             x, y, row_h = 40, y + row_h + 24, 0
         font = defaults.get('fontname', 'Kalam 13') if info.get('follow_font') == '1' else info.get('fontname', 'Kalam 13')
         match = re.fullmatch(r'(.+?)\s+(\d+(?:\.\d+)?)', font)
@@ -60,41 +67,36 @@ def merge_xpad(source, store):
     result['notes'] = notes
     return result, imported
 
-def atomic_write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + '.migration-tmp')
-    tmp.write_text(text)
-    tmp.chmod(0o600)
-    tmp.replace(path)
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true', help='Write notes and GNOME autostart to your user configuration')
+    parser.add_argument('--preview-dir', type=Path, default=ROOT / 'local-migration', help='Directory for the private migration preview')
+    parser.add_argument('--source', type=Path, help='Xpad data directory (defaults to XDG config/xpad, then ~/.xpad)')
+    parser.add_argument('--user-data-dir', type=Path, help='Canvas profile directory (respects STICKY_USER_DATA)')
+    parser.add_argument('--canvas-width', type=int, default=1200, help='Width for arranging imported notes, in pixels')
+    parser.add_argument('--skip-autostart', action='store_true', help='Only migrate notes; do not require a desktop build')
+    parser.add_argument('--executable', help='Executable or AppImage to use for autostart')
     args = parser.parse_args()
-    app_dir = CONFIG / 'sticky-notes-canvas'
+    config = config_root()
+    app_dir = (args.user_data_dir or Path(os.environ.get('STICKY_USER_DATA', str(config / 'sticky-notes-canvas')))).expanduser().resolve()
+    data_dir = app_dir
     pointer = app_dir / 'data-folder.json'
     if pointer.exists():
-        raise SystemExit('Custom data folder detected; inspect it before migrating.')
-    target = app_dir / 'notes.json'
-    existing = json.loads(target.read_text()) if target.exists() else {}
-    merged, count = merge_xpad(CONFIG / 'xpad', existing)
-    binary = ROOT / 'dist/linux-unpacked/sticky-notes-canvas'
-    if not binary.is_file():
-        raise SystemExit(f'Desktop build is missing: {binary}')
-    # Quote Desktop Entry Exec arguments, including its special literal escapes.
-    escaped = str(binary).replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`').replace('$', '\\$').replace('%', '%%')
-    desktop = f'''[Desktop Entry]
-Type=Application
-Name=xpad++
-Comment=Your notes on a transparent canvas
-Exec="{escaped}"
-Terminal=false
-X-GNOME-Autostart-enabled=true
-'''
-    preview = ROOT / 'local-migration'
+        chosen = json.loads(pointer.read_text(encoding='utf-8')).get('path')
+        if chosen and Path(chosen).is_absolute():
+            data_dir = Path(chosen)
+            if not data_dir.is_dir() or not (data_dir / 'notes.json').is_file():
+                raise SystemExit('The chosen canvas data folder is unavailable; restore it before migrating.')
+    target = data_dir / 'notes.json'
+    existing = json.loads(target.read_text(encoding='utf-8')) if target.exists() else {}
+    source = args.source or config / 'xpad'
+    if not args.source and not source.exists() and (Path.home() / '.xpad').is_dir():
+        source = Path.home() / '.xpad'
+    merged, count = merge_xpad(source.expanduser(), existing, args.canvas_width)
+    binary = None if args.skip_autostart else desktop_executable(args.executable)
+    preview = args.preview_dir.expanduser()
     preview.mkdir(exist_ok=True, mode=0o700)
     atomic_write(preview / 'notes.json', json.dumps(merged, indent=2))
-    atomic_write(preview / 'sticky-notes-canvas.desktop', desktop)
     print(f'{count} Xpad notes ready to import; {len(existing.get("notes", []))} existing canvas notes preserved.')
     if not args.apply:
         print('Preview prepared. Close Sticky Notes, then run: python3 scripts/migrate-xpad.py --apply')
@@ -114,23 +116,15 @@ X-GNOME-Autostart-enabled=true
     backup.mkdir(parents=True, mode=0o700)
     if target.exists():
         shutil.copy2(target, backup / 'notes.json')
-    autostart = CONFIG / 'autostart'
-    entry = autostart / 'sticky-notes-canvas.desktop'
-    if entry.exists():
-        shutil.copy2(entry, backup / entry.name)
-    atomic_write(target, json.dumps(merged, indent=2))
-    atomic_write(entry, desktop)
-    # Keep Xpad data intact, but avoid launching both apps at login.
-    old_entry = autostart / 'xpad.desktop'
-    if old_entry.exists():
-        shutil.copy2(old_entry, backup / old_entry.name)
-        old = old_entry.read_text()
-        old = re.sub(r'^Hidden=.*\n?', '', old, flags=re.MULTILINE)
-        old = old.replace('[Desktop Entry]', '[Desktop Entry]\nHidden=true', 1)
-        atomic_write(old_entry, old)
-    print(f'Imported {count} notes. GNOME autostart enabled; Xpad autostart disabled if present.')
+    atomic_write(target, json.dumps(merged, indent=2, ensure_ascii=False))
+    if binary:
+        install_autostart(binary, replace_xpad=True, config=config)
+    print(f'Imported {count} notes.' + (' Login autostart enabled; Xpad autostart disabled if present.' if binary else ' Autostart unchanged.'))
     print(f'Backups: {backup}')
     print('Original Xpad note files were not modified.')
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (OSError, ValueError) as err:
+        raise SystemExit(str(err))

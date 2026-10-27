@@ -3,7 +3,7 @@ const {useState, useEffect, useRef} = React;
 const PAD_COLORS = {yellow:'#fff2a8', green:'#d4edb0', blue:'#c7e6fa', pink:'#f7cedc', peach:'#ffdbb8', lilac:'#e2d3f3', white:'#faf9f5'};
 const GENERIC_FONTS = ['sans-serif', 'serif', 'monospace'];
 const DEFAULT_PAD_FONT = 'Kalam';
-const padFontFamily = (name = DEFAULT_PAD_FONT) => GENERIC_FONTS.includes(name) ? name : JSON.stringify(name || DEFAULT_PAD_FONT);
+const padFontFamily = (name = DEFAULT_PAD_FONT) => GENERIC_FONTS.includes(name) ? name : `${JSON.stringify(name || DEFAULT_PAD_FONT)}, Kalam, cursive`;
 const newPad = (x = 80, y = 70) => ({id:crypto.randomUUID(), title:'', body:'', padFont:DEFAULT_PAD_FONT, color:'yellow', x, y, w:280, h:260, z:1, folder:'root'});
 function Pad({note, patch, add, close, remove, menu, bringForward}) {
   const editor = useRef(null);
@@ -54,7 +54,7 @@ function Xpad() {
     let cancelled=false;
     window.stickyAPI.listFonts().then(result=>{
       if(cancelled)return;
-      if(result.ok)setFonts(result.families);
+      if(result.ok){setFonts(result.families);setFontError(result.warning || '');}
       else setFontError(result.error);
     }).catch(err=>{if(!cancelled)setFontError(err.message);});
     return ()=>{cancelled=true;};

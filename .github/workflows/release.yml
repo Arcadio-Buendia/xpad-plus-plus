@@ -1,6 +1,9 @@
 name: Linux build
 
 on:
+  push:
+    branches: [main, master]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -16,12 +19,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run build:ui
+      - run: npm test
       - run: node --check main.js
-      - run: node --test tests/system-fonts.test.mjs
-      - run: python3 tests/xpad-migration-test.py
-      - run: npm run build -- --linux --dir --config.electronDist=node_modules/electron/dist
+      - run: python3 -m unittest discover -s tests
+      - run: npm run build:desktop
+      # tar preserves executable permissions when downloading the artifact.
+      - run: tar -C dist -czf dist/xpad-plus-plus-linux-x64.tar.gz linux-unpacked
       - uses: actions/upload-artifact@v4
         with:
-          name: xpad-plus-plus-linux
-          path: dist/linux-unpacked/
+          name: xpad-plus-plus-linux-x64
+          path: dist/xpad-plus-plus-linux-x64.tar.gz

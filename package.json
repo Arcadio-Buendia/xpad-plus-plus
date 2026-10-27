@@ -9,7 +9,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test tests/system-fonts.test.mjs tests/xpad-ui.test.mjs",
     "test:e2e": "node --test tests-e2e/*.e2e.mjs",
     "build:icons": "node build-icons.mjs",
     "build": "electron-builder",
@@ -19,7 +19,10 @@
     "prestart": "npm run build:ui",
     "prebuild": "npm run build:ui",
     "prebuild:linux": "npm run build:ui",
-    "prebuild:mac": "npm run build:ui"
+    "prebuild:mac": "npm run build:ui",
+    "test:upstream": "node --test tests/*.test.mjs",
+    "pretest": "npm run build:ui",
+    "build:desktop": "npm run build -- --linux --dir --config.electronDist=node_modules/electron/dist"
   },
   "devDependencies": {
     "electron": "^32.0.0",
@@ -105,5 +108,8 @@
   },
   "contributors": [
     "faridjaff (original StickyNotesCanvas project)"
-  ]
+  ],
+  "engines": {
+    "node": ">=22"
+  }
 }

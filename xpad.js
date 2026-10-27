@@ -15,7 +15,7 @@ const PAD_COLORS = {
 };
 const GENERIC_FONTS = ['sans-serif', 'serif', 'monospace'];
 const DEFAULT_PAD_FONT = 'Kalam';
-const padFontFamily = (name = DEFAULT_PAD_FONT) => GENERIC_FONTS.includes(name) ? name : JSON.stringify(name || DEFAULT_PAD_FONT);
+const padFontFamily = (name = DEFAULT_PAD_FONT) => GENERIC_FONTS.includes(name) ? name : `${JSON.stringify(name || DEFAULT_PAD_FONT)}, Kalam, cursive`;
 const newPad = (x = 80, y = 70) => ({
   id: crypto.randomUUID(),
   title: '',
@@ -166,7 +166,10 @@ function Xpad() {
     let cancelled = false;
     window.stickyAPI.listFonts().then(result => {
       if (cancelled) return;
-      if (result.ok) setFonts(result.families);else setFontError(result.error);
+      if (result.ok) {
+        setFonts(result.families);
+        setFontError(result.warning || '');
+      } else setFontError(result.error);
     }).catch(err => {
       if (!cancelled) setFontError(err.message);
     });

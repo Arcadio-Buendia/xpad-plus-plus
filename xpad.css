@@ -1,3 +1,4 @@
+@font-face{font-family:"Kalam";src:url("./assets/fonts/Kalam-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
 html,body,#root{height:100%;margin:0;overflow:hidden;font-family:Arial,sans-serif;color:#292820;background:transparent}
 *{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #486c9e;outline-offset:1px}
 .pad-desk{position:absolute;inset:0;overflow:auto;scrollbar-width:none}

@@ -167,14 +167,15 @@ function createWindow() {
     workAreas: screen.getAllDisplays().map((d) => d.workArea),
     primary: screen.getPrimaryDisplay().workArea,
   });
+  const workArea = screen.getDisplayMatching(state.bounds).workArea;
   mainWindow = new BrowserWindow({
     // Start at the saved display's work area even if its window manager
     // ignores maximize() for a non-resizable transparent window.
-    ...screen.getDisplayMatching(state.bounds).workArea,
+    ...workArea,
     // Shown below, once maximized.
     show: false,
-    minWidth:  800,
-    minHeight: 600,
+    minWidth: Math.min(800, workArea.width),
+    minHeight: Math.min(600, workArea.height),
     // Both the native surface and the page must be transparent.
     frame: false,
     transparent: true,
