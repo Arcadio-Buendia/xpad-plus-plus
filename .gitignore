@@ -13,3 +13,7 @@ docs/superpowers/
 flatpak/.flatpak-builder/
 flatpak/build-dir/
 flatpak/generated-sources.json
+
+# Private migration previews contain personal notes.
+local-migration/
+__pycache__/

@@ -2,6 +2,12 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('stickyAPI', {
   load:       () => ipcRenderer.invoke('notes:load'),
+  listFonts: () => ipcRenderer.invoke('fonts:list'),
+  saveSync: (data) => ipcRenderer.sendSync('notes:save-sync', data),
+  onNewPad: (cb) => {
+    ipcRenderer.on('menu:newPad', cb);
+    return () => ipcRenderer.removeListener('menu:newPad', cb);
+  },
   save:       (data) => ipcRenderer.invoke('notes:save', data),
   exportFile: (data) => ipcRenderer.invoke('notes:export', data),
   importFile: () => ipcRenderer.invoke('notes:import'),

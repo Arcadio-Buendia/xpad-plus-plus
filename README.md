@@ -1,170 +1,181 @@
-<div align="center">
+# xpad++
 
-![Sticky Notes banner](readme-assets/00-banner.png)
+Xpad-style sticky notes on a transparent desktop canvas, built for Linux and GNOME.
+Keep your notes over your desktop, put them where you want, and find them in the
+same place next time.
 
-### <a href="https://faridjaff.github.io/StickyNotesCanvas/" target="_blank" rel="noopener noreferrer">→ Try the web demo</a>
+Built from [StickyNotesCanvas](https://github.com/faridjaff/StickyNotesCanvas) by
+[faridjaff](https://github.com/faridjaff). Thank you for the original Electron app,
+canvas foundation, and storage implementation. xpad++ adapts that project into a
+minimal interface inspired by [Xpad](https://launchpad.net/xpad).
 
-# Sticky Notes
+## Features
 
-**A sticky notes app for Linux (yes, for Linux too!) and macOS that doesn't look like it escaped from a 2006 GNOME panel.**
+- Transparent, frameless desktop window that opens maximized.
+- Notes without title bars; drag them by their bottom toolbar or Ctrl+drag the text.
+- Resize notes using the bottom-right corner.
+- Persistent text, positions, dimensions, colors, font settings, and canvas scroll.
+- A new note created with **+** inherits its parent's size, background, font, text
+  size, and text color, with an empty body and a slightly offset position.
+- **Kalam** as the default note font; choose from installed system and user fonts.
+- Per-note background and text colors, font family, and text size.
+- Small note toolbar with new, undo, redo, properties, and delete controls.
+- Close notes without deleting them; restore them with **Show all notes**.
+- Confirmation before permanently deleting a note.
+- Scrollable canvas with hidden scrollbars.
+- Xpad migration that merges notes, preserves their text and colors, backs up the
+  existing store, and avoids duplicate imports on repeat runs.
+- GNOME login autostart through the migration/setup command.
+- Offline browser preview with a separate browser-local note store.
 
-</div>
+Notes are plain text. Xpad's rich text styling, system tray, and cross-workspace
+window features are not implemented. Transparency is confirmed working on the
+development GNOME setup; support can vary with the desktop compositor.
 
----
+## Installation: the setup used for this project
 
-## Why this exists
-
-For ten years I've been looking for a sticky notes app for Ubuntu that I could actually stand to look at.
-
-Every one I tried fell into one of two camps:
-
-- **Pretty but useless.** Beautiful rounded corners, lovely typography, three features — one of which is "change the color of the note."
-- **Useful but ugly.** Tabs! Folders! Tags! Wiki-links! Markdown! Rendered in fonts last updated when Firefox had a phoenix logo.
-
-I wanted both. I couldn't find it. So I built it in a day with [Claude Design](https://claude.ai/) and [Claude Code](https://claude.ai/code).
-
-This is that app. It runs on **Linux, macOS, and in the browser**.
-
----
-
-## Screenshots
-
-**Your whole desk, at a glance.** Pan, zoom, and drop notes wherever they feel right. Link two notes by clicking the link icon on one and then the other — connections show up as dashed arrows on the canvas.
-
-![Workspace overview](readme-assets/01-hero.png)
-
-**Folders that aren't an afterthought.** Colored folder badges (right-click a folder to change its color), per-folder note counts, and a drawer that actually gets out of the way when you want it to.
-
-**Three looks — because a 2pm notes session and a 2am notes session are not the same notes session.**
-
-Paper is the default. Flat if you want something quieter. Terminal if you've made peace with what you are.
-
-Each one comes in light and dark, and **Preferences → Appearance → System** follows your desktop's light/dark setting as you flip it. The notes themselves stay pastel either way.
-
-<table>
-<tr>
-<td><img src="readme-assets/03-flat.png" alt="Flat theme" /></td>
-<td><img src="readme-assets/02-terminal.png" alt="Terminal theme" /></td>
-</tr>
-<tr>
-<td align="center"><i>Flat</i></td>
-<td align="center"><i>Terminal</i></td>
-</tr>
-</table>
-
-**Close up.** Markdown body, link arrows, color-coded folder badges. Click the red pushpin in a note's header — pinned notes follow you into every folder, so the important stuff is always one click away.
-
-![Close-up of notes with link arrow](readme-assets/04-closeup.png)
-
----
-
-## What it does *not* do
-
-- Sync to the cloud. (I may add this. I also may not.)
-- Collaborate in real time. These are sticky notes.
-- Send you notifications. These are sticky notes.
-- Parse your notes with a large language model to surface insights. **These are sticky notes.**
-
----
-
-## Design principles
-
-A short list, because the whole point of this project is that somebody should have written one:
-
-1. **It should be pleasant to open.** If the app is ugly, I won't use it, and then none of the features matter.
-2. **Features should earn their place.** Every toolbar button is a small betrayal of the reader's attention.
-3. **The canvas is the interface.** Not a sidebar. Not a list. The notes, where you put them.
-4. **Escape hatches everywhere.** Keyboard shortcut for the common things. Drag-and-drop for everything. Your notes are a JSON file you can read with `cat`.
-
----
-
-## Install
-
-### Pre-built downloads (recommended)
-
-Easiest path on Ubuntu — install from the Snap Store, auto-updates included:
+You need Git, Node.js 22 with npm, and Fontconfig (`fc-list`). Python 3 is used by
+the optional migration and browser-packaging scripts. Install the Kalam font
+through GNOME Fonts or your distribution if it is not already installed:
 
 ```bash
-sudo snap install sticky-notes-canvas
+fc-match Kalam
 ```
 
-Or grab the latest from [**Releases**](https://github.com/faridjaff/StickyNotesCanvas/releases/latest) and pick the file for your platform:
+Check that the reported family is Kalam; Fontconfig otherwise reports a substitute.
 
-| Platform | File | How to install |
-|---|---|---|
-| **Ubuntu / any distro with snapd** | (Snap Store) | `sudo snap install sticky-notes-canvas` |
-| **Ubuntu / Debian** | `sticky-notes-canvas_<ver>_amd64.deb` | `sudo dpkg -i sticky-notes-canvas_<ver>_amd64.deb` |
-| **Linux (portable)** | `Sticky Notes-<ver>.AppImage` | `chmod +x` and double-click — no install needed |
-| **macOS — via Homebrew** | (tap) | `brew install --cask faridjaff/tap/sticky-notes-canvas` |
-| **macOS — Apple Silicon (M-series)** | `Sticky Notes-<ver>-arm64.dmg` | mount → drag to `/Applications` |
-| **macOS — Intel** | `Sticky Notes-<ver>.dmg` | mount → drag to `/Applications` |
+### 1. Install Node.js and npm with nvm
 
-#### Note for macOS
-
-The macOS builds are not code-signed. If your Mac refuses to open the downloaded app, build from source instead — instructions below.
-
-### Web (nothing to download)
-
-Hosted version: <https://faridjaff.github.io/StickyNotesCanvas/>. Each visitor's notes live in their own browser's `localStorage` — separate from any other browser, separate from the desktop app. Survives refresh; cleared if you wipe site data.
-
-On a Chromebook, or in Chrome or Edge anywhere, it also installs as an app: click the install icon at the right end of the address bar (in Chrome, also ⋮ → **Cast, save, and share** → **Install page as app…**). It then opens in its own window from the launcher and works offline. The installed app and the browser tab share the same notes, so ticking "also clear data" in Chrome's uninstall dialog deletes them — take a backup first.
-
----
-
-## Build from source
-
-### Prerequisites
-
-- **Node.js 20+** and **npm**
-- **macOS only:** Xcode Command Line Tools — `xcode-select --install`
-- **Linux only:** nothing extra; `electron-builder` fetches `fpm` (for `.deb` packaging) on first build
-
-### Clone and install
+This installs them under your user account, without `sudo`:
 
 ```bash
-git clone git@github.com:faridjaff/StickyNotesCanvas.git
-cd sticky-notes-canvas
-npm install
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | bash
+source ~/.bashrc
+nvm install 22
 ```
 
-### Build and install
+If nvm is already installed, use `nvm use 22` instead.
 
-#### Linux
+### 2. Clone, install, and launch
+
+```bash
+git clone https://github.com/arcadio-buendia/xpad-plus-plus.git
+cd xpad-plus-plus
+nvm use 22
+npm ci
+npm start
+```
+
+`npm start` compiles the renderer before launching Electron. The app works offline
+after its dependencies are installed. To quit the frameless app, press **Ctrl+Q**.
+
+### 3. Build the desktop app
+
+This is the unpacked Linux build used during development:
+
+```bash
+npm run build -- --linux --dir --config.electronDist=node_modules/electron/dist
+./dist/linux-unpacked/sticky-notes-canvas
+```
+
+Using the installed Electron distribution avoids downloading Electron again while
+packaging. To build Linux installers instead:
 
 ```bash
 npm run build:linux
-sudo dpkg -i "dist/sticky-notes-canvas_$(node -p 'require(\"./package.json\").version')_amd64.deb"
 ```
 
-The app appears in your Activities menu as **Sticky Notes**. To uninstall later: `sudo apt remove sticky-notes-canvas`.
+The inherited targets are `.deb`, AppImage, and Snap; these installer formats have
+not all been validated for xpad++. The unpacked Linux build has been validated.
 
-#### macOS
+## Import Xpad notes and enable GNOME autostart
+
+Build the desktop app first. Xpad notes are read from `$XDG_CONFIG_HOME/xpad`
+(default `~/.config/xpad`). Preview the migration without changing either app:
 
 ```bash
-npm run build:mac
-cp -R "dist/mac-arm64/Sticky Notes.app" /Applications/
+python3 scripts/migrate-xpad.py
 ```
 
-(Use `dist/mac/Sticky Notes.app` instead if you're on an Intel Mac.)
+Then close xpad++ with **Ctrl+Q** and apply:
 
-Launch from Spotlight (`Cmd+Space` → "Sticky Notes") or from Launchpad. To uninstall later, drag the app from `/Applications` to the Trash.
+```bash
+python3 scripts/migrate-xpad.py --apply
+npm start
+```
 
----
+The script:
 
-## Where your notes live
+- Merges Xpad notes into the existing canvas store and keeps the Xpad originals.
+- Preserves note text, dimensions, background/text colors, and font settings.
+- Arranges imported notes below existing ones without overlaps; Xpad positions
+  were all recorded as `(0, 0)` in the development GNOME session.
+- Creates a timestamped backup under
+  `~/.config/sticky-notes-canvas/migration-backups/` (or the equivalent XDG path).
+- Installs `~/.config/autostart/sticky-notes-canvas.desktop` to launch the built
+  app at GNOME login, and backs up and disables the existing `xpad.desktop`
+  autostart entry if present.
 
-| | Path |
-|---|---|
-| Linux | `~/.config/sticky-notes-canvas/notes.json` |
-| macOS | `~/Library/Application Support/sticky-notes-canvas/notes.json` |
-| Browser | `localStorage` key `stickies.all` |
+The autostart entry points to this checkout's `dist/linux-unpacked` executable.
+Keep the checkout in place, or rerun setup after moving and rebuilding it. The
+script currently expects the default canvas data folder.
 
-The JSON format is identical across all three — copy the file from one machine to another and your notes come with it.
+## Controls
 
-Pasted pictures live next to it, in `images/`. To keep both somewhere else — a folder that Syncthing, Nextcloud, Dropbox or a network share keeps in step between your computers, say — open **File → Choose where notes are saved…** (press Alt if the menu bar is hidden) and choose a folder. Make sure it's ready first: an empty folder gets a copy of the notes you have open; a folder that already holds notes asks whether to use the notes there or your current notes (which overwrites the ones there). The app never syncs anything itself, and only `notes.json` and `images/` move: window size and the browser profile stay on each machine. If the chosen folder can't be reached when the app starts (share not mounted, drive unplugged), it says so and saves nothing until you decide. The same goes for a `notes.json` that can't be read, say after a hand edit with a typo: the app shows where the mistake is and leaves the file alone until you fix it.
+| Action | Control |
+| --- | --- |
+| New note with parent's appearance | **+** on a note |
+| New note with defaults | **Ctrl+N**, or double-click empty canvas |
+| Move a note | Drag the bottom toolbar, or Ctrl+drag its text area |
+| Resize a note | Drag its bottom-right corner |
+| Colors, fonts, close, and show all | Right-click a note, or use **⋯** |
+| Close the current note, keeping it saved | **Ctrl+W** while editing |
+| Delete a note | **−**, then confirm |
+| Scroll the canvas | Mouse wheel or touchpad |
+| Dismiss a menu or deletion dialog | **Escape** |
+| Quit | **Ctrl+Q** |
 
----
+## Where notes are saved
 
-## License
+Desktop notes are stored in `~/.config/sticky-notes-canvas/notes.json` by default
+(on Linux), respecting Electron's normal configuration location. The internal
+package name stays `sticky-notes-canvas` to preserve existing notes and autostart
+paths. Back up this directory before moving between machines.
 
-[MIT](LICENSE) — © 2026 faridjaff. Designed with [Claude Design](https://claude.ai/) and engineered with [Claude Code](https://claude.ai/code). Built in a day. Tested over the course of a decade of quietly being annoyed.
+Local migration previews under `local-migration/` contain personal notes and are
+excluded from Git, as are `node_modules/` and `dist/`.
+
+## Browser preview
+
+```bash
+npm run build:ui
+python3 scripts/package-browser.py
+./launch-preview.sh
+```
+
+The browser preview stores notes separately in the browser's local storage.
+Desktop transparency and system font enumeration require Electron; a browser
+window cannot reveal your wallpaper through its page background.
+
+## Development checks
+
+```bash
+npm run build:ui
+node --check main.js
+node --test tests/system-fonts.test.mjs
+python3 tests/xpad-migration-test.py
+```
+
+If GJS is installed, `gjs tests/xpad-smoke.gjs` also checks the renderer's note
+creation, appearance inheritance, persistence, closing, deletion, and load failures.
+The repository retains tests from the original application; some target UI
+features that xpad++ has removed.
+
+## Credits and license
+
+- **Original project:** [faridjaff/StickyNotesCanvas](https://github.com/faridjaff/StickyNotesCanvas).
+- **Interface inspiration:** [Xpad](https://launchpad.net/xpad).
+- **xpad++ adaptations:** [arcadio-buendia](https://github.com/arcadio-buendia).
+
+MIT licensed. The original copyright and license are preserved in [LICENSE](LICENSE).
+Bundled libraries retain their own license notices.

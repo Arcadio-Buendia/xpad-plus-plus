@@ -1,11 +1,11 @@
 {
   "name": "sticky-notes-canvas",
   "version": "2.3.0",
-  "description": "Spatial sticky notes canvas",
+  "description": "Xpad-style sticky notes on a transparent desktop canvas",
   "main": "main.js",
   "private": true,
-  "homepage": "https://local.sticky-notes",
-  "author": "faridjaff <faridjaff@users.noreply.github.com>",
+  "homepage": "https://github.com/arcadio-buendia/xpad-plus-plus",
+  "author": "arcadio-buendia",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -14,7 +14,12 @@
     "build:icons": "node build-icons.mjs",
     "build": "electron-builder",
     "build:linux": "electron-builder --linux",
-    "build:mac": "electron-builder --mac"
+    "build:mac": "electron-builder --mac",
+    "build:ui": "node scripts/build-xpad.cjs",
+    "prestart": "npm run build:ui",
+    "prebuild": "npm run build:ui",
+    "prebuild:linux": "npm run build:ui",
+    "prebuild:mac": "npm run build:ui"
   },
   "devDependencies": {
     "electron": "^32.0.0",
@@ -23,7 +28,7 @@
   },
   "build": {
     "appId": "com.local.sticky-notes",
-    "productName": "Sticky Notes",
+    "productName": "xpad++",
     "files": [
       "main.js",
       "preload.js",
@@ -38,7 +43,11 @@
       "assets/**",
       "build/icon.png",
       "build/icons/**",
-      "package.json"
+      "package.json",
+      "xpad.jsx",
+      "xpad.css",
+      "xpad.js",
+      "system-fonts.js"
     ],
     "asarUnpack": [
       "build/icon.png",
@@ -52,8 +61,8 @@
       ],
       "category": "Utility",
       "icon": "build/icons",
-      "synopsis": "Spatial sticky notes canvas",
-      "description": "Sticky Notes is a spatial canvas for organizing sticky notes into folders.",
+      "synopsis": "Xpad-style transparent sticky notes canvas",
+      "description": "Xpad-style sticky notes on a transparent desktop canvas, with persistent layouts, system fonts, and inherited note appearance.",
       "desktop": {
         "StartupWMClass": "sticky-notes"
       }
@@ -91,6 +100,10 @@
     },
     "directories": {
       "output": "dist"
-    }
-  }
+    },
+    "executableName": "sticky-notes-canvas"
+  },
+  "contributors": [
+    "faridjaff (original StickyNotesCanvas project)"
+  ]
 }

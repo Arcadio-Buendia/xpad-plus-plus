@@ -1,5 +1,7 @@
 const { app, BrowserWindow, clipboard, ipcMain, Menu, dialog, net, protocol, screen, shell } = require('electron');
 const path = require('node:path');
+const { listSystemFonts } = require('./system-fonts.js');
+ipcMain.handle('fonts:list', () => listSystemFonts());
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
@@ -166,13 +168,22 @@ function createWindow() {
     primary: screen.getPrimaryDisplay().workArea,
   });
   mainWindow = new BrowserWindow({
-    ...state.bounds,
-    // Shown below, once it is in its restored state.
+    // Start at the saved display's work area even if its window manager
+    // ignores maximize() for a non-resizable transparent window.
+    ...screen.getDisplayMatching(state.bounds).workArea,
+    // Shown below, once maximized.
     show: false,
     minWidth:  800,
     minHeight: 600,
-    backgroundColor: '#14181d',
-    title: 'Sticky Notes',
+    // Both the native surface and the page must be transparent.
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    // Electron transparency can break on platforms with resizable windows.
+    resizable: false,
+    maximizable: true,
+    backgroundColor: '#00000000',
+    title: 'xpad++',
     icon: path.join(__dirname, 'build', 'icon.png'),
     // Hidden, not removed: Alt still summons it for the one-off items that
     // live nowhere else (Reload, Toggle DevTools, Full screen).
@@ -189,10 +200,8 @@ function createWindow() {
   // until the first Alt; this starts it hidden everywhere.
   if (HIDE_MENU_BAR) mainWindow.setMenuBarVisibility(false);
 
-  // Maximize / go full screen before the first show, so the window maps
-  // straight into that state instead of flashing up as a plain window first.
-  if (state.fullScreen) mainWindow.setFullScreen(true);
-  else if (state.maximized) mainWindow.maximize();
+  // Always open maximized, regardless of the previously saved window state.
+  mainWindow.maximize();
   mainWindow.show();
 
   // The user can pin the bar open from Preferences; the renderer tells us
@@ -237,78 +246,24 @@ function createWindow() {
 // the focused text field. Menu.setApplicationMenu(null) would take the bar
 // away and those shortcuts with it.
 function buildMenu() {
-  const isMac = process.platform === 'darwin';
-  const prefsItem = {
-    label: 'Preferences…',
-    accelerator: 'CmdOrCtrl+,',
-    click: () => mainWindow?.webContents.send('menu:preferences'),
-  };
-  const template = [
-    ...(isMac ? [{
-      label: app.name,
-      submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        prefsItem,
-        { type: 'separator' },
-        { role: 'quit' },
-      ],
-    }] : []),
-    {
-      label: 'File',
-      submenu: [
-        ...(isMac ? [] : [prefsItem, { type: 'separator' }]),
-        {
-          label: 'Import notes from image using your AI…',
-          click: () => mainWindow?.webContents.send('menu:importHelp'),
-        },
-        { type: 'separator' },
-        {
-          id: 'data-folder',
-          label: 'Choose where notes are saved…',
-          click: () => mainWindow?.webContents.send('menu:dataFolder'),
-        },
-        { type: 'separator' },
-        {
-          label: 'Save backup…',
-          click: () => mainWindow?.webContents.send('menu:export'),
-        },
-        {
-          label: 'Restore backup…',
-          click: () => mainWindow?.webContents.send('menu:import'),
-        },
-        { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' },
-      ],
-    },
+  // Retain native editing accelerators while keeping the application menu small.
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: 'Notes', submenu: [
+      { label: 'New note', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('menu:newPad') },
+      { role: 'quit' },
+    ]},
     { label: 'Edit', submenu: [
       { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
-      { role: 'cut'  }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
     ]},
-    { label: 'View', submenu: [
-      { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' },
-      { type: 'separator' },
-      { role: 'togglefullscreen' },
-    ]},
-    { role: 'help', submenu: [
-      // "Check for Updates…" is hidden under snap/flatpak — those channels
-      // get updates via their store (snapd, flatpak software center) and
-      // shouldn't surface a redundant in-app update button.
-      ...(process.env.SNAP_NAME || process.env.FLATPAK_ID ? [] : [
-        {
-          label: 'Check for Updates…',
-          click: () => mainWindow?.webContents.send('menu:checkUpdates'),
-        },
-        { type: 'separator' },
-      ]),
-      {
-        label: 'About',
-        click: () => mainWindow?.webContents.send('menu:about'),
-      },
-    ]},
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  ]));
 }
+
+// Flush the latest renderer state before its window closes.
+ipcMain.on('notes:save-sync', (event, data) => {
+  try { writeNotes(data); pendingSave = null; event.returnValue = { ok: true }; }
+  catch (err) { event.returnValue = { ok: false, error: err.message }; }
+});
 
 // Loading re-resolves the data folder, so a page that reloads after a
 // folder switch or a "Try again" reads from wherever the pointer says now.
