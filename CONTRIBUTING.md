@@ -4,6 +4,8 @@ The current UI is in `xpad.jsx` and `xpad.css`. `scripts/build-xpad.cjs` uses bu
 Babel to generate `xpad.js`; commit that generated file with UI changes.
 `npm start`, `npm test`, and desktop builds regenerate it automatically.
 
+- `note-geometry.js`: shared collision, resizing, and free-placement rules; bundled
+  into `xpad.js` by the renderer build.
 - `main.js`: Electron window, native menus, IPC, and storage integration.
 - `preload.js`: the `window.stickyAPI` renderer bridge.
 - `system-fonts.js`: optional Fontconfig enumeration with a graceful fallback.
@@ -12,6 +14,7 @@ Babel to generate `xpad.js`; commit that generated file with UI changes.
 - `scripts/desktop_setup.py`: independent XDG desktop-session autostart setup.
 - `scripts/migrate-xpad.py`: Xpad migration and backups.
 - `tests/xpad-ui.test.mjs` and `tests/system-fonts.test.mjs`: current Node UI checks.
+- `tests/note-geometry.test.mjs`: collision and layout invariants.
 - `tests/test_*.py`: migration, fresh-user setup, and packaging checks.
 
 The original app's renderer and tests are retained for reference. Its folders,

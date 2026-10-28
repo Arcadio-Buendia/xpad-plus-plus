@@ -58,8 +58,7 @@ test('note appearance inheritance, persistence, closing, and confirmed deletion'
   for (const key of ['w', 'h', 'color', 'padPaper', 'padFont', 'padFontSize', 'padInk']) assert.equal(child[key], parent[key], key);
   assert.equal(child.body, '');
   assert.notEqual(child.id, parent.id);
-  assert.equal(child.x, 386);
-  assert.equal(child.y, 286);
+  assert.ok(!(child.x < parent.x+parent.w && child.x+child.w > parent.x && child.y < parent.y+parent.h && child.y+child.h > parent.y));
   assert.ok(child.z > parent.z);
   note(canvas.render()).props.close();
   assert.ok(canvas.saved().notes[0].padClosed);
@@ -98,4 +97,34 @@ test('the default font and its redistribution license are shipped with the rende
   assert.equal(font.readUInt32BE(0), 0x00010000);
   assert.match(fs.readFileSync(new URL('../assets/fonts/Kalam-OFL.txt', import.meta.url), 'utf8'), /SIL OPEN FONT LICENSE Version 1.1/);
   assert.match(fs.readFileSync(new URL('../xpad.css', import.meta.url), 'utf8'), /src:url\("\.\/assets\/fonts\/Kalam-Regular.ttf"\)/);
+});
+
+
+test('renderer constrains movement and resize through note patch callbacks', async () => {
+  const a={id:'a',x:0,y:0,w:180,h:140,body:'Keep a'}, b={id:'b',x:300,y:0,w:180,h:140,body:'Keep b'};
+  const canvas=app({notes:[a,b]});
+  let tree=await canvas.load();
+  find(tree,e=>e.props.note?.id==='a').props.patch({x:900,y:0});
+  assert.equal(canvas.saved().notes[0].x,120);
+  tree=canvas.render();
+  find(tree,e=>e.props.note?.id==='a').props.patch({w:900,h:140});
+  assert.equal(canvas.saved().notes[0].w,180);
+  assert.equal(canvas.saved().notes[0].body,'Keep a');
+  assert.equal(canvas.saved().notes[1].x,300);
+});
+
+test('overlapping saved notes are separated on load and their repaired positions persist', async () => {
+  const notes=['a','b','c'].map(id=>({id,x:0,y:0,w:180,h:140,body:id}));
+  const canvas=app({notes});
+  await canvas.load();
+  const repaired=canvas.saved().notes;
+  assert.deepEqual(repaired.map(n=>n.body),['a','b','c']);
+  for(let i=0;i<repaired.length;i++)for(let j=i+1;j<repaired.length;j++){
+    const a=repaired[i],b=repaired[j];
+    assert.ok(!(a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y));
+  }
+  const reopened=app(canvas.saved());
+  const tree=await reopened.load();
+  assert.equal(find(tree,e=>e.props.note?.id==='b').props.note.x,repaired[1].x);
+  assert.equal(find(tree,e=>e.props.note?.id==='b').props.note.y,repaired[1].y);
 });

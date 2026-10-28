@@ -1,5 +1,7 @@
 # xpad++
 
+Current version: **1.1.0**. The initial xpad++ release is **1.0.0**.
+
 Xpad-style sticky notes on a transparent desktop canvas, built for Linux desktops.
 Keep your notes over your desktop, put them where you want, and find them in the
 same place next time. Developed on GNOME; other desktops need a compositor that
@@ -15,6 +17,9 @@ minimal interface inspired by [Xpad](https://launchpad.net/xpad).
 - Transparent, frameless desktop window that always opens maximized.
 - Notes without title bars; drag them by their bottom toolbar or Ctrl+drag the text.
 - Resize notes using the bottom-right corner.
+- Notes collide at their edges when dragged or resized; they cannot overlap.
+  Fast drags stop at obstacles and slide along their edges. New, restored, and
+  previously overlapping notes are placed in the nearest available space.
 - Persistent text, positions, dimensions, colors, font settings, and canvas scroll.
 - **+** creates a blank note inheriting its parent's size, colors, and font settings.
 - **Kalam bundled with the app**: no font installation or network request needed.

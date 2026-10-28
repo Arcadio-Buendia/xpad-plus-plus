@@ -1,5 +1,18 @@
 # Changelog
 
+## xpad++ 1.1.0 (2026-10-28)
+
+- Notes collide at their edges during dragging and resizing instead of overlapping.
+- Fast drags cannot jump through notes; diagonal drags slide along blocked edges.
+- New notes and restored notes find free positions. Existing overlaps are resolved on load.
+
+## xpad++ 1.0.0
+
+- Initial transparent canvas release, with persistent layouts, bundled Kalam,
+  system font selection, inherited note appearance, Xpad migration, and autostart.
+
+The versions below describe the original StickyNotesCanvas project.
+
 ## [2.3.0](https://github.com/faridjaff/StickyNotesCanvas/compare/v2.2.1...v2.3.0) (2026-10-26)
 
 

@@ -63,7 +63,8 @@ function Xpad() {
   const saveQueue = useRef(Promise.resolve());
   const desk = useRef(null);
   const commit = recipe => {
-    const next = recipe(latest.current);
+    const proposed = recipe(latest.current);
+    const next = {...proposed, notes:NoteGeometry.settleNotes(proposed.notes,latest.current?.notes)};
     latest.current = next;
     setStore(next);
     if(window.stickyAPI) {
@@ -80,15 +81,23 @@ function Xpad() {
     (async()=>{
       try {
         const raw = window.stickyAPI ? await window.stickyAPI.load() : JSON.parse(localStorage.getItem('stickies.all') || '{}');
-        const next = {...raw, notes:Array.isArray(raw?.notes) ? raw.notes : [newPad()], view:raw?.view || {x:0,y:0,z:1}};
+        const loadedNotes = Array.isArray(raw?.notes) ? raw.notes : [newPad()];
+        const next = {...raw, notes:NoteGeometry.settleNotes(loadedNotes), view:raw?.view || {x:0,y:0,z:1}};
         latest.current=next;setStore(next);
+        if(next.notes !== loadedNotes) commit(()=>next);
       } catch(err){setError('Could not open your notes: '+err.message);}
     })();
     const flush = () => {if(latest.current && window.stickyAPI?.saveSync) window.stickyAPI.saveSync(latest.current);};
     window.addEventListener('beforeunload',flush);
     return ()=>window.removeEventListener('beforeunload',flush);
   },[]);
-  const patch = (id, changes) => commit(s=>({...s,notes:s.notes.map(n=>n.id===id?{...n,...changes}:n)}));
+  const patch = (id, changes) => commit(s=>({...s,notes:s.notes.map(n=>{
+    if(n.id!==id)return n;
+    let geometry={};
+    if('x' in changes || 'y' in changes) geometry=NoteGeometry.moveNote(n,{x:changes.x ?? n.x,y:changes.y ?? n.y},s.notes);
+    if('w' in changes || 'h' in changes) geometry={...geometry,...NoteGeometry.resizeNote({...n,...geometry},{w:changes.w ?? n.w,h:changes.h ?? n.h},s.notes)};
+    return {...n,...changes,...geometry};
+  })}));
   const add = (x,y,parent) => {
     const surface=desk.current;
     const note=newPad(x ?? (surface?.scrollLeft || 0)+70+Math.random()*100,y ?? (surface?.scrollTop || 0)+60+Math.random()*80);
