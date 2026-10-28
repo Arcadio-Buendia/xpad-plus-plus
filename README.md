@@ -15,19 +15,8 @@ minimal interface inspired by [Xpad](https://launchpad.net/xpad).
 - Transparent, frameless desktop window that always opens maximized.
 - Notes without title bars; drag them by their bottom toolbar or Ctrl+drag the text.
 - Resize notes using the bottom-right corner.
-- Persistent text, positions, dimensions, colors, font settings, and canvas scroll.
-- **+** creates a blank note inheriting its parent's size, colors, and font settings.
-- **Kalam bundled with the app**: no font installation or network request needed.
-- Choose installed fonts when Fontconfig is available; otherwise use bundled Kalam
-  and generic fonts. Unavailable custom fonts fall back to Kalam.
-- Per-note background and text colors, font family, and text size.
-- Small toolbar with new, undo, redo, properties, and delete controls.
-- Close notes without deleting them; restore them with **Show all notes**.
-- Confirmation before permanently deleting a note.
-- Scrollable canvas with hidden scrollbars.
 - Optional Xpad migration with backups and duplicate-import detection.
 - Optional desktop-session autostart, independent of whether Xpad is installed.
-- Offline browser preview with its own browser-local note store and bundled Kalam.
 
 Notes are plain text. Xpad's rich text styling, system tray, and cross-workspace
 window features are not implemented. Desktop transparency depends on the
