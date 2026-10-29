@@ -1,5 +1,6 @@
 const { app, BrowserWindow, clipboard, ipcMain, Menu, dialog, net, protocol, screen, shell } = require('electron');
 const path = require('node:path');
+const { claimInstance } = require('./single-instance.js');
 const { listSystemFonts } = require('./system-fonts.js');
 ipcMain.handle('fonts:list', () => listSystemFonts());
 const fs = require('node:fs');
@@ -132,6 +133,7 @@ function migrateLegacyUserData() {
 }
 
 let mainWindow = null;
+const ownsInstance = claimInstance(app, () => mainWindow);
 let pendingSave = null;
 let isQuitting  = false;
 
@@ -601,6 +603,7 @@ ipcMain.handle('notes:import', async () => {
 });
 
 app.whenReady().then(() => {
+  if (!ownsInstance) return;
   // Run any one-time migrations before anything reads notes.json.
   migrateLegacyUserData();
 

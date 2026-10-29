@@ -36,3 +36,17 @@ display name. Original Git history and the upstream MIT notice are retained.
 Future changes can be committed and pushed normally. The prepared commit uses
 `arcadio-buendia <arcadio-buendia@users.noreply.github.com>` as its author; configure
 your preferred Git identity locally for future commits if needed.
+
+## When GitHub has edits you do not have locally
+
+Fetch and merge the remote branch before pushing, preserving both histories:
+
+```bash
+git fetch origin
+git merge origin/main
+git push origin HEAD:main
+```
+
+If Git reports a conflict, resolve the marked sections in the affected files,
+then `git add` them and `git commit` to complete the merge before pushing. Do not
+force-push to work around a rejected push: it can discard changes made on GitHub.

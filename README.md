@@ -1,6 +1,6 @@
 # xpad++
 
-Current version: **1.1.0**. The initial xpad++ release is **1.0.0**.
+Current version: **1.1.1**. The initial xpad++ release is **1.0.0**.
 
 Xpad-style sticky notes on a transparent desktop canvas, built for Linux desktops.
 Keep your notes over your desktop, put them where you want, and find them in the
@@ -91,6 +91,37 @@ hardware.
 These installer formats have not all been validated for xpad++; Snap packaging
 requires additional Snap tooling. Use the unpacked build above for the documented
 installation path.
+
+## App-menu and desktop icon
+
+After building, install the app-menu launcher and icon for your current user:
+
+```bash
+python3 scripts/desktop_setup.py --apply --launcher
+```
+
+Search for **xpad++** in your desktop's app menu. On GNOME, you can then pin it to
+Favorites. This does not change autostart settings. Launching it again brings
+the existing canvas to the front.
+
+To also request a desktop shortcut:
+
+```bash
+python3 scripts/desktop_setup.py --apply --desktop
+```
+
+The script reads your configured XDG desktop directory, makes the shortcut
+executable, and tries to mark it trusted. If your desktop prompts, right-click it
+and choose **Allow Launching**. GNOME needs desktop-icon support (for example,
+Desktop Icons NG) to display files on the desktop. If `XDG_DESKTOP_DIR` is set to
+your home directory, desktop shortcuts are disabled; the installer reports that
+and still installs the app-menu launcher. `--desktop-dir /path/to/Desktop` can
+explicitly select a shortcut folder.
+
+User application files go under `$XDG_DATA_HOME` (default `~/.local/share`).
+Existing launcher files are backed up before replacement. Like autostart, the
+launcher points at the built executable; rerun setup after moving it. You can
+combine launcher installation and autostart with `--launcher --autostart`.
 
 ## Start at desktop login
 

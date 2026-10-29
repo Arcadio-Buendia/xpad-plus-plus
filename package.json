@@ -1,6 +1,6 @@
 {
   "name": "sticky-notes-canvas",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Xpad-style sticky notes on a transparent desktop canvas",
   "main": "main.js",
   "private": true,
@@ -9,7 +9,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/system-fonts.test.mjs tests/xpad-ui.test.mjs tests/note-geometry.test.mjs",
+    "test": "node --test tests/system-fonts.test.mjs tests/xpad-ui.test.mjs tests/note-geometry.test.mjs tests/single-instance.test.mjs",
     "test:e2e": "node --test tests-e2e/*.e2e.mjs",
     "build:icons": "node build-icons.mjs",
     "build": "electron-builder",
@@ -51,7 +51,8 @@
       "xpad.css",
       "xpad.js",
       "system-fonts.js",
-      "note-geometry.js"
+      "note-geometry.js",
+      "single-instance.js"
     ],
     "asarUnpack": [
       "build/icon.png",

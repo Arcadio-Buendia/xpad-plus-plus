@@ -22,6 +22,7 @@ class PortabilityTests(unittest.TestCase):
         self.home = Path(self.temp.name)
         self.config = self.home / 'custom config'
         self.env = {**os.environ, 'HOME': str(self.home), 'XDG_CONFIG_HOME': str(self.config)}
+        self.env['XDG_DATA_HOME'] = str(self.home / 'local data')
         self.env.pop('STICKY_USER_DATA', None)
         self.executable = self.home / 'my notes % app'
         self.executable.write_text('#!/bin/sh\nexit 0\n')
@@ -57,6 +58,48 @@ class PortabilityTests(unittest.TestCase):
         backups = list((self.config / 'sticky-notes-canvas/autostart-backups').glob('*/xpad.desktop'))
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(), original)
+
+    def test_launcher_installs_in_xdg_data_home_without_enabling_autostart(self):
+        result = self.run_script('desktop_setup.py', '--apply', '--launcher', '--executable', self.executable)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = Path(self.env['XDG_DATA_HOME'])
+        entry = data / 'applications/sticky-notes-canvas.desktop'
+        self.assertIn('Icon=xpad-plus-plus', entry.read_text())
+        self.assertNotIn('Autostart', entry.read_text())
+        self.assertTrue((data / 'icons/hicolor/256x256/apps/xpad-plus-plus.png').is_file())
+        self.assertFalse((self.config / 'autostart').exists())
+
+    def test_desktop_shortcut_uses_configured_directory_and_is_executable(self):
+        self.config.mkdir()
+        (self.config / 'user-dirs.dirs').write_text('XDG_DESKTOP_DIR="$HOME/My Desktop"\n')
+        result = self.run_script('desktop_setup.py', '--apply', '--desktop', '--executable', self.executable)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        shortcut = self.home / 'My Desktop/xpad-plus-plus.desktop'
+        self.assertTrue(shortcut.is_file())
+        self.assertTrue(os.access(shortcut, os.X_OK))
+        self.assertFalse((self.home / 'Desktop').exists())
+
+    def test_disabled_desktop_directory_does_not_put_shortcuts_in_home(self):
+        self.config.mkdir()
+        (self.config / 'user-dirs.dirs').write_text('XDG_DESKTOP_DIR="$HOME/"\n')
+        result = self.run_script('desktop_setup.py', '--apply', '--desktop', '--executable', self.executable)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Desktop folder is disabled', result.stdout)
+        self.assertFalse((self.home / 'xpad-plus-plus.desktop').exists())
+        self.assertTrue((Path(self.env['XDG_DATA_HOME']) / 'applications/sticky-notes-canvas.desktop').is_file())
+
+    def test_explicit_desktop_directory_can_be_used_alongside_autostart(self):
+        destination = self.home / 'Chosen Desktop'
+        result = self.run_script('desktop_setup.py', '--apply', '--desktop-dir', destination,
+                                 '--autostart', '--executable', self.executable)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((destination / 'xpad-plus-plus.desktop').is_file())
+        self.assertTrue((self.config / 'autostart/sticky-notes-canvas.desktop').is_file())
+
+    def test_launcher_preview_does_not_install_files(self):
+        result = self.run_script('desktop_setup.py', '--launcher', '--executable', self.executable)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(Path(self.env['XDG_DATA_HOME']).exists())
 
     def test_desktop_entry_escapes_reserved_characters_in_executable_paths(self):
         entry = desktop.desktop_entry(Path('/tmp/notes $cash "quoted" \\ path%'))

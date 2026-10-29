@@ -1,5 +1,12 @@
 # Changelog
 
+## xpad++ 1.1.1 (2026-10-29)
+
+- Add app-menu launcher and icon installation, separate from autostart.
+- Focus the existing canvas when launched again, preventing duplicate note writers.
+- Add optional desktop shortcuts using the configured XDG desktop directory.
+- Preserve disabled desktop directories and explain GNOME shortcut requirements.
+
 ## xpad++ 1.1.0 (2026-10-28)
 
 - Notes collide at their edges during dragging and resizing instead of overlapping.
